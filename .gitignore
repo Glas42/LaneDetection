@@ -1,5 +1,7 @@
 # ingnore the datasets
-
+Datasets/RawDataset/*
+Datasets/ProcessedDataset/*
+Datasets/FinalDataset/*
 
 # ignore the models
 Models/*
