@@ -1,1 +1,0 @@
-In this folder are the original images and labels of the dataset which won't be changed, only copied.

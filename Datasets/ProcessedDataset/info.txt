@@ -1,1 +1,0 @@
-In this folder are the images and labels of the dataset which are used for the annotation for the final dataset.
