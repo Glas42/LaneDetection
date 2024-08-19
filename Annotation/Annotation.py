@@ -17,6 +17,8 @@ image_scale = 2
 last_left_clicked = False
 last_window_size = None, None
 
+lane_buttons = [0] * (max_lanes * 2 + 1)
+
 print("Caching images...")
 
 images = []
@@ -58,14 +60,18 @@ def GetTextSize(text="NONE", text_width=100, max_text_height=100):
     return text, fontscale, thickness, textsize[0], textsize[1]
 
 
-def Button(text="NONE", x1=0, y1=0, x2=100, y2=100, round_corners=30, buttoncolor=(100, 100, 100), buttonhovercolor=(130, 130, 130), buttonselectedcolor=(160, 160, 160), buttonselected=False, textcolor=(255, 255, 255), width_scale=0.9, height_scale=0.8):
+def Button(text="NONE", x1=0, y1=0, x2=100, y2=100, round_corners=30, buttoncolor=(100, 100, 100), buttonhovercolor=(130, 130, 130), buttonselectedcolor=(160, 160, 160), buttonselectedhovercolor=(190, 190, 190), buttonselected=False, textcolor=(255, 255, 255), width_scale=0.9, height_scale=0.8):
     if x1 <= mouse_x*frame_width <= x2 and y1 <= mouse_y*frame_height <= y2:
         buttonhovered = True
     else:
         buttonhovered = False
     if buttonselected == True:
-        cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonselectedcolor, round_corners, cv2.LINE_AA)
-        cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonselectedcolor, -1, cv2.LINE_AA)
+        if buttonhovered == True:
+            cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonselectedhovercolor, round_corners, cv2.LINE_AA)
+            cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonselectedhovercolor, -1, cv2.LINE_AA)
+        else:
+            cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonselectedcolor, round_corners, cv2.LINE_AA)
+            cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonselectedcolor, -1, cv2.LINE_AA)
     elif buttonhovered == True:
         cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonhovercolor, round_corners, cv2.LINE_AA)
         cv2.rectangle(frame, (round(x1+round_corners/2), round(y1+round_corners/2)), (round(x2-round_corners/2), round(y2-round_corners/2)), buttonhovercolor, -1, cv2.LINE_AA)
@@ -117,6 +123,24 @@ while index < len(images):
                                                         textcolor=(255, 255, 255),
                                                         width_scale=0.95,
                                                         height_scale=0.5)
+
+    for button in range(len(lane_buttons)):
+        button_pressed, button_hovered = Button(text=f"Lane {int(button - (len(lane_buttons) - 1) / 2)}",
+                                                            x1=0.705*frame_width,
+                                                            y1=((button + 1) / (len(lane_buttons) + 1) + 0.01) * frame_height,
+                                                            x2=0.995*frame_width,
+                                                            y2=((button + 1) / (len(lane_buttons) + 1) + 0.11) * frame_height,
+                                                            round_corners=30,
+                                                            buttonselected=lane_buttons[button] == 1,
+                                                            buttoncolor=(80, 80, 80),
+                                                            buttonhovercolor=(100, 100, 100),
+                                                            buttonselectedcolor=(0, 200, 0),
+                                                            buttonselectedhovercolor=(20, 220, 20),
+                                                            textcolor=(255, 255, 255),
+                                                            width_scale=0.95,
+                                                            height_scale=0.5)
+        if button_pressed == True:
+            lane_buttons[button] = 1 if lane_buttons[button] == 0 else 0
 
     if button_next_pressed == True:
         index += 1
