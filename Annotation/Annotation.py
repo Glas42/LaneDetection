@@ -19,8 +19,8 @@ remove_list = []
 last_left_clicked = False
 last_right_clicked = False
 allow_adding_points = True
-grabbed_point = None, None
 last_window_size = None, None
+grabbed_point = None, None, None
 
 lane_buttons = [0] * (max_lanes * 2 + 1)
 lanes = [[[((i + 1) / (max_lanes * 2 + 2) - 0.1 / (i + 1),  0,     True), # x, y, tied_to_edge
@@ -30,8 +30,8 @@ lanes = [[[((i + 1) / (max_lanes * 2 + 2) - 0.1 / (i + 1),  0,     True), # x, y
           [((i + 1) / (max_lanes * 2 + 2) + 0.1 / (i + 1),  0,     True),
            ((i + 1) / (max_lanes * 2 + 2) + 0.9 / (i + 1),   0.5,  False),
            ((i + 1) / (max_lanes * 2 + 2) + 1.6 / (i + 1),   1,    True)
-           ], 0, 0] for i in range(max_lanes * 2 + 1)]
-lane_buttons[3] = 1
+           ]] for i in range(max_lanes * 2 + 1)]
+lanes = [[[((np.clip(x, 0, 1), y, tied_to_edge)) for x, y, tied_to_edge in lane] for lane in lanes_group] for lanes_group in lanes]
 
 print("Caching images...")
 
@@ -185,20 +185,19 @@ while index < len(images):
 
     for lane in range(len(lane_buttons)):
         if lane_buttons[lane] == 1:
-            lane_name = f"Lane {int(lane - (len(lane_buttons) - 1) / 2)}"
             for i in range(2):
                 for j in range(len(lanes[lane][i])):
                     x, y, tied_to_edge = lanes[lane][i][j]
                     radius = round(window_height/75)
-                    if grabbed_point != (None, None):
-                        point_grabbed = True if (i, j) == grabbed_point and left_clicked == True else False
+                    if grabbed_point != (None, None, None):
+                        point_grabbed = True if (lane, i, j) == grabbed_point and left_clicked == True else False
                     else:
                         point_grabbed = True if x * image.shape[1] - radius < mouse_x_image * image.shape[1] < x * image.shape[1] + radius and y * image.shape[0] - radius < mouse_y_image * image.shape[0] < y * image.shape[0] + radius and left_clicked == True else False
                     if left_clicked == False:
                         point_grabbed = False
-                        grabbed_point = None, None
+                        grabbed_point = None, None, None
                     if point_grabbed == True:
-                        grabbed_point = i, j
+                        grabbed_point = lane, i, j
                         if tied_to_edge == False:
                             x = min(1, max(0, mouse_x_image))
                             y = min(1, max(0, mouse_y_image))
@@ -219,7 +218,7 @@ while index < len(images):
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), radius, (20, 220, 220), -1, cv2.LINE_AA)
                         allow_adding_points = False
                         if right_clicked == True and last_right_clicked == False:
-                            remove_list.append((i, j))
+                            remove_list.append((lane, i, j))
                     else:
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), round(radius * 0.7), (0, 200, 200), -1, cv2.LINE_AA)
 
@@ -249,13 +248,16 @@ while index < len(images):
                     else:
                         cv2.line(image, (round(x1 * image.shape[1]), round(y1 * image.shape[0])), (round(x2 * image.shape[1]), round(y2 * image.shape[0])), (0, 200, 200), round(window_height/300), cv2.LINE_AA)
 
+                lane_name = f"{int(lane - (len(lane_buttons) - 1) / 2)}{'L' if i == 0 else 'R'}"
+                text, fontscale, thickness, width, height = GetTextSize(lane_name, 0.02 * image.shape[1], 0.02 * image.shape[0])
+                cv2.putText(image, lane_name, (round(x * image.shape[1] - (width * 1.75 if i == 1 else width * -0.75)), round(image.shape[0] - radius * 0.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (0, 200, 200), thickness, cv2.LINE_AA)
+
     if len(remove_list) > 0:
-        for lane in range(len(lanes)):
-            for i, j in sorted(remove_list, reverse=True):
-                if i < len(lanes[lane]):
-                    lanes[lane][i] = [point for k, point in enumerate(lanes[lane][i]) if k != j]
-                    if len(lanes[lane][i]) == 0:
-                        lanes[lane].pop(i)
+        for lane, i, j in sorted(remove_list, reverse=True):
+            if i < len(lanes[lane]) and j < len(lanes[lane][i]):
+                lanes[lane][i].pop(j)
+                if len(lanes[lane][i]) == 0:
+                    lanes[lane].pop(i)
         remove_list.clear()
 
     frame[0:background.shape[0], 0:round(background.shape[1] * 0.7)] = image
