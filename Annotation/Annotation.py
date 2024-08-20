@@ -23,13 +23,13 @@ last_window_size = None, None
 grabbed_point = None, None, None
 
 lane_buttons = [0] * (max_lanes * 2 + 1)
-lanes = [[[((i + 1) / (max_lanes * 2 + 2) - 0.1 / (i + 1),  0,     True), # x, y, tied_to_edge
-           ((i + 1) / (max_lanes * 2 + 2) - 0.9 / (i + 1),   0.5,  False),
-           ((i + 1) / (max_lanes * 2 + 2) - 1.6 / (i + 1),   1,    True)
+lanes = [[[(0.5 + (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   0,    True), # x, y, tied_to_edge
+           (0.5 + (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   0.5,  False),
+           (0.5 + (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   1,    True)
            ],
-          [((i + 1) / (max_lanes * 2 + 2) + 0.1 / (i + 1),  0,     True),
-           ((i + 1) / (max_lanes * 2 + 2) + 0.9 / (i + 1),   0.5,  False),
-           ((i + 1) / (max_lanes * 2 + 2) + 1.6 / (i + 1),   1,    True)
+          [(0.5 + (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   0,    True),
+           (0.5 + (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   0.5,  False),
+           (0.5 + (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   1,    True)
            ]] for i in range(max_lanes * 2 + 1)]
 lanes = [[[((np.clip(x, 0, 1), y, tied_to_edge)) for x, y, tied_to_edge in lane] for lane in lanes_group] for lanes_group in lanes]
 
@@ -102,6 +102,10 @@ def Button(text="NONE", x1=0, y1=0, x2=100, y2=100, round_corners=30, buttoncolo
 while index < len(images):
     try:
         window_x, window_y, window_width, window_height = cv2.getWindowImageRect("LaneDetection - Annotation")
+        if window_width < 100 or window_height < 100:
+            cv2.resizeWindow("LaneDetection - Annotation", 100, 100)
+            window_width = 100
+            window_height = 100
         if window_width != last_window_size[0] or window_height != last_window_size[1]:
             last_window_size = window_width, window_height
             background = np.zeros((window_height, window_width, 3), np.uint8)
@@ -134,10 +138,10 @@ while index < len(images):
     cv2.line(image, (round(0.5 * image.shape[1]), 0), (round(0.5 * image.shape[1]), image.shape[0]), (0, 0, 100), 1, cv2.LINE_AA)
 
     button_next_pressed, button_next_hovered = Button(text="Next",
-                                                      x1=0.8525*frame_width,
-                                                      y1=0.01*frame_height,
-                                                      x2=0.995*frame_width,
-                                                      y2=0.11*frame_height,
+                                                      x1=0.85125*frame_width,
+                                                      y1=0.005 * frame_height,
+                                                      x2=0.9975*frame_width,
+                                                      y2=(1 / (len(lane_buttons) + 1) - 0.005) * frame_height,
                                                       round_corners=30,
                                                       buttoncolor=(0, 200, 0),
                                                       buttonhovercolor=(20, 220, 20),
@@ -147,10 +151,10 @@ while index < len(images):
                                                       height_scale=0.5)
 
     button_back_pressed, button_back_hovered = Button(text="Back",
-                                                      x1=0.705*frame_width,
-                                                      y1=0.01*frame_height,
-                                                      x2=0.8475*frame_width,
-                                                      y2=0.11*frame_height,
+                                                      x1=0.7025*frame_width,
+                                                      y1=0.005*frame_height,
+                                                      x2=0.84825*frame_width,
+                                                      y2=(1 / (len(lane_buttons) + 1) - 0.005) * frame_height,
                                                       round_corners=30,
                                                       buttoncolor=(0, 0, 200),
                                                       buttonhovercolor=(20, 20, 220),
@@ -166,10 +170,10 @@ while index < len(images):
 
     for button in range(len(lane_buttons)):
         button_pressed, button_hovered = Button(text=f"Lane {int(button - (len(lane_buttons) - 1) / 2)}",
-                                                x1=0.705*frame_width,
-                                                y1=((button + 1) / (len(lane_buttons) + 1) + 0.01) * frame_height,
-                                                x2=0.995*frame_width,
-                                                y2=((button + 1) / (len(lane_buttons) + 1) + 0.11) * frame_height,
+                                                x1=0.7025*frame_width,
+                                                y1=((button + 1) / (len(lane_buttons) + 1) + 0.005) * frame_height,
+                                                x2=0.9975*frame_width,
+                                                y2=((button + 2) / (len(lane_buttons) + 1)  - 0.005) * frame_height,
                                                 round_corners=30,
                                                 buttonselected=lane_buttons[button] == 1,
                                                 buttoncolor=(80, 80, 80),
@@ -211,13 +215,15 @@ while index < len(images):
                             else:
                                 x = mouse_x_image
                                 y = nearest_y
+                            x = min(1, max(0, x))
+                            y = min(1, max(0, y))
                             lanes[lane][i][j] = x, y, tied_to_edge
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), radius, (220, 220, 220), -1, cv2.LINE_AA)
                         allow_adding_points = False
                     elif x * image.shape[1] - radius <= mouse_x_image * image.shape[1] <= x * image.shape[1] + radius and y * image.shape[0] - radius <= mouse_y_image * image.shape[0] <= y * image.shape[0] + radius:
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), radius, (20, 220, 220), -1, cv2.LINE_AA)
                         allow_adding_points = False
-                        if right_clicked == True and last_right_clicked == False:
+                        if tied_to_edge == False and right_clicked == True and last_right_clicked == False:
                             remove_list.append((lane, i, j))
                     else:
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), round(radius * 0.7), (0, 200, 200), -1, cv2.LINE_AA)
@@ -249,7 +255,7 @@ while index < len(images):
                         cv2.line(image, (round(x1 * image.shape[1]), round(y1 * image.shape[0])), (round(x2 * image.shape[1]), round(y2 * image.shape[0])), (0, 200, 200), round(window_height/300), cv2.LINE_AA)
 
                 lane_name = f"{int(lane - (len(lane_buttons) - 1) / 2)}{'L' if i == 0 else 'R'}"
-                text, fontscale, thickness, width, height = GetTextSize(lane_name, 0.02 * image.shape[1], 0.02 * image.shape[0])
+                text, fontscale, thickness, width, height = GetTextSize(lane_name, 0.1 * image.shape[1], 0.015 * image.shape[0])
                 cv2.putText(image, lane_name, (round(x * image.shape[1] - (width * 1.75 if i == 1 else width * -0.75)), round(image.shape[0] - radius * 0.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (0, 200, 200), thickness, cv2.LINE_AA)
 
     if len(remove_list) > 0:
