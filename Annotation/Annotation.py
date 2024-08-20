@@ -1,6 +1,7 @@
 import numpy as np
 import ctypes
 import mouse
+import math
 import cv2
 import os
 
@@ -14,10 +15,23 @@ DATA_PATH = PATH + "\\Datasets\\PreprocessedDataset"
 index = 0
 max_lanes = 3
 image_scale = 2
+remove_list = []
 last_left_clicked = False
+last_right_clicked = False
+allow_adding_points = True
+grabbed_point = None, None
 last_window_size = None, None
 
 lane_buttons = [0] * (max_lanes * 2 + 1)
+lanes = [[[((i + 1) / (max_lanes * 2 + 2) - 0.1 / (i + 1),  0,     True), # x, y, tied_to_edge
+           ((i + 1) / (max_lanes * 2 + 2) - 0.9 / (i + 1),   0.5,  False),
+           ((i + 1) / (max_lanes * 2 + 2) - 1.6 / (i + 1),   1,    True)
+           ],
+          [((i + 1) / (max_lanes * 2 + 2) + 0.1 / (i + 1),  0,     True),
+           ((i + 1) / (max_lanes * 2 + 2) + 0.9 / (i + 1),   0.5,  False),
+           ((i + 1) / (max_lanes * 2 + 2) + 1.6 / (i + 1),   1,    True)
+           ], 0, 0] for i in range(max_lanes * 2 + 1)]
+lane_buttons[3] = 1
 
 print("Caching images...")
 
@@ -99,6 +113,8 @@ while index < len(images):
         else:
             mouse_x = 0
             mouse_y = 0
+        mouse_x_image = mouse_x / 0.7
+        mouse_y_image = mouse_y
     except:
         exit()
 
@@ -107,45 +123,146 @@ while index < len(images):
     else:
         left_clicked = False
 
+    if ctypes.windll.user32.GetKeyState(0x02) & 0x8000 != 0 and ctypes.windll.user32.GetForegroundWindow() == ctypes.windll.user32.FindWindowW(None, "LaneDetection - Annotation"):
+        right_clicked = True
+    else:
+        right_clicked = False
+
     frame = background.copy()
     frame_height, frame_width, _ = frame.shape
-    frame[0:background.shape[0], 0:round(background.shape[1] * 0.7)] = cv2.resize(cv2.cvtColor(images[index], cv2.COLOR_GRAY2BGR), (round(background.shape[1] * 0.7), background.shape[0]))
+    image = cv2.resize(cv2.cvtColor(images[index], cv2.COLOR_GRAY2BGR), (round(background.shape[1] * 0.7), background.shape[0]))
+    cv2.line(image, (round(0.5 * image.shape[1]), 0), (round(0.5 * image.shape[1]), image.shape[0]), (0, 0, 100), 1, cv2.LINE_AA)
 
     button_next_pressed, button_next_hovered = Button(text="Next",
-                                                        x1=0.705*frame_width,
-                                                        y1=0.01*frame_height,
-                                                        x2=0.995*frame_width,
-                                                        y2=0.11*frame_height,
-                                                        round_corners=30,
-                                                        buttoncolor=(0, 200, 0),
-                                                        buttonhovercolor=(20, 220, 20),
-                                                        buttonselectedcolor=(20, 220, 20),
-                                                        textcolor=(255, 255, 255),
-                                                        width_scale=0.95,
-                                                        height_scale=0.5)
+                                                      x1=0.8525*frame_width,
+                                                      y1=0.01*frame_height,
+                                                      x2=0.995*frame_width,
+                                                      y2=0.11*frame_height,
+                                                      round_corners=30,
+                                                      buttoncolor=(0, 200, 0),
+                                                      buttonhovercolor=(20, 220, 20),
+                                                      buttonselectedcolor=(20, 220, 20),
+                                                      textcolor=(255, 255, 255),
+                                                      width_scale=0.95,
+                                                      height_scale=0.5)
+
+    button_back_pressed, button_back_hovered = Button(text="Back",
+                                                      x1=0.705*frame_width,
+                                                      y1=0.01*frame_height,
+                                                      x2=0.8475*frame_width,
+                                                      y2=0.11*frame_height,
+                                                      round_corners=30,
+                                                      buttoncolor=(0, 0, 200),
+                                                      buttonhovercolor=(20, 20, 220),
+                                                      buttonselectedcolor=(20, 20, 220),
+                                                      textcolor=(255, 255, 255),
+                                                      width_scale=0.95,
+                                                      height_scale=0.5)
+
+    if button_next_pressed == True and index < len(images) - 1:
+        index += 1
+    if button_back_pressed == True and index > 0:
+        index -= 1
 
     for button in range(len(lane_buttons)):
         button_pressed, button_hovered = Button(text=f"Lane {int(button - (len(lane_buttons) - 1) / 2)}",
-                                                            x1=0.705*frame_width,
-                                                            y1=((button + 1) / (len(lane_buttons) + 1) + 0.01) * frame_height,
-                                                            x2=0.995*frame_width,
-                                                            y2=((button + 1) / (len(lane_buttons) + 1) + 0.11) * frame_height,
-                                                            round_corners=30,
-                                                            buttonselected=lane_buttons[button] == 1,
-                                                            buttoncolor=(80, 80, 80),
-                                                            buttonhovercolor=(100, 100, 100),
-                                                            buttonselectedcolor=(0, 200, 0),
-                                                            buttonselectedhovercolor=(20, 220, 20),
-                                                            textcolor=(255, 255, 255),
-                                                            width_scale=0.95,
-                                                            height_scale=0.5)
+                                                x1=0.705*frame_width,
+                                                y1=((button + 1) / (len(lane_buttons) + 1) + 0.01) * frame_height,
+                                                x2=0.995*frame_width,
+                                                y2=((button + 1) / (len(lane_buttons) + 1) + 0.11) * frame_height,
+                                                round_corners=30,
+                                                buttonselected=lane_buttons[button] == 1,
+                                                buttoncolor=(80, 80, 80),
+                                                buttonhovercolor=(100, 100, 100),
+                                                buttonselectedcolor=(0, 200, 0),
+                                                buttonselectedhovercolor=(20, 220, 20),
+                                                textcolor=(255, 255, 255),
+                                                width_scale=0.95,
+                                                height_scale=0.5)
+
         if button_pressed == True:
             lane_buttons[button] = 1 if lane_buttons[button] == 0 else 0
 
-    if button_next_pressed == True:
-        index += 1
+    for lane in range(len(lane_buttons)):
+        if lane_buttons[lane] == 1:
+            lane_name = f"Lane {int(lane - (len(lane_buttons) - 1) / 2)}"
+            for i in range(2):
+                for j in range(len(lanes[lane][i])):
+                    x, y, tied_to_edge = lanes[lane][i][j]
+                    radius = round(window_height/75)
+                    if grabbed_point != (None, None):
+                        point_grabbed = True if (i, j) == grabbed_point and left_clicked == True else False
+                    else:
+                        point_grabbed = True if x * image.shape[1] - radius < mouse_x_image * image.shape[1] < x * image.shape[1] + radius and y * image.shape[0] - radius < mouse_y_image * image.shape[0] < y * image.shape[0] + radius and left_clicked == True else False
+                    if left_clicked == False:
+                        point_grabbed = False
+                        grabbed_point = None, None
+                    if point_grabbed == True:
+                        grabbed_point = i, j
+                        if tied_to_edge == False:
+                            x = min(1, max(0, mouse_x_image))
+                            y = min(1, max(0, mouse_y_image))
+                            lanes[lane][i][j] = x, y, tied_to_edge
+                        else:
+                            nearest_x = 0 if mouse_x_image < 0.5 else 1
+                            nearest_y = 0 if mouse_y_image < 0.5 else 1
+                            if abs(mouse_x_image - nearest_x) * image.shape[1] < abs(mouse_y_image - nearest_y) * image.shape[0]:
+                                x = nearest_x
+                                y = mouse_y_image
+                            else:
+                                x = mouse_x_image
+                                y = nearest_y
+                            lanes[lane][i][j] = x, y, tied_to_edge
+                        cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), radius, (220, 220, 220), -1, cv2.LINE_AA)
+                        allow_adding_points = False
+                    elif x * image.shape[1] - radius <= mouse_x_image * image.shape[1] <= x * image.shape[1] + radius and y * image.shape[0] - radius <= mouse_y_image * image.shape[0] <= y * image.shape[0] + radius:
+                        cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), radius, (20, 220, 220), -1, cv2.LINE_AA)
+                        allow_adding_points = False
+                        if right_clicked == True and last_right_clicked == False:
+                            remove_list.append((i, j))
+                    else:
+                        cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), round(radius * 0.7), (0, 200, 200), -1, cv2.LINE_AA)
+
+                for j in range(len(lanes[lane][i])):
+                    if j == 0:
+                        continue
+                    x1, y1, _ = lanes[lane][i][j]
+                    x2, y2, _ = lanes[lane][i][j - 1]
+
+                    line_vec_x = x2 - x1
+                    line_vec_y = y2 - y1
+                    line_length = math.sqrt(line_vec_x**2 + line_vec_y**2)
+                    if line_length == 0:
+                        line_length = 0.0001
+                    proj_x = ((mouse_x_image - x1) * line_vec_x + (mouse_y_image - y1) * line_vec_y) / line_length
+                    proj_x = max(0, min(1, proj_x / line_length))
+                    closest_x = x1 + proj_x * line_vec_x
+                    closest_y = y1 + proj_x * line_vec_y
+                    distance_to_line = math.sqrt((mouse_x_image - closest_x)**2 + (mouse_y_image - closest_y)**2)
+
+                    if distance_to_line < 0.005:
+                        cv2.line(image, (round(x1 * image.shape[1]), round(y1 * image.shape[0])), (round(x2 * image.shape[1]), round(y2 * image.shape[0])), (0, 200, 200), round(window_height/200), cv2.LINE_AA)
+                        if left_clicked == True and last_left_clicked == False and allow_adding_points == True:
+                            allow_adding_points = False
+                            insert_index = j
+                            lanes[lane][i].insert(insert_index, (closest_x, closest_y, False))
+                    else:
+                        cv2.line(image, (round(x1 * image.shape[1]), round(y1 * image.shape[0])), (round(x2 * image.shape[1]), round(y2 * image.shape[0])), (0, 200, 200), round(window_height/300), cv2.LINE_AA)
+
+    if len(remove_list) > 0:
+        for lane in range(len(lanes)):
+            for i, j in sorted(remove_list, reverse=True):
+                if i < len(lanes[lane]):
+                    lanes[lane][i] = [point for k, point in enumerate(lanes[lane][i]) if k != j]
+                    if len(lanes[lane][i]) == 0:
+                        lanes[lane].pop(i)
+        remove_list.clear()
+
+    frame[0:background.shape[0], 0:round(background.shape[1] * 0.7)] = image
 
     last_left_clicked = left_clicked
+    last_right_clicked = right_clicked
+    allow_adding_points = True
 
     cv2.imshow("LaneDetection - Annotation", frame)
     cv2.waitKey(1)
