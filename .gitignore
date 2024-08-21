@@ -5,3 +5,6 @@ Datasets/FinalDataset/*
 
 # ignore the models
 Models/*
+
+# ignore the training logs
+Train/logs/*

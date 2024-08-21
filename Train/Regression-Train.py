@@ -28,10 +28,9 @@ DATA_PATH = PATH + "\\Datasets\\FinalDataset"
 MODEL_PATH = PATH + "\\Models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 NUM_EPOCHS = 200
-BATCH_SIZE = 200
-IMG_WIDTH = 420
-IMG_HEIGHT = 220
-IMG_CHANNELS = ['Grayscale', 'Binarize', 'RGB', 'RG', 'GB', 'RB', 'R', 'G', 'B'][1]
+BATCH_SIZE = 1
+IMG_WIDTH = 400
+IMG_HEIGHT = 400
 LEARNING_RATE = 0.0001
 MAX_LEARNING_RATE = 0.0001
 TRAIN_VAL_RATIO = 0.8
@@ -47,7 +46,8 @@ OUTPUTS = None
 for file in os.listdir(DATA_PATH):
     if file.endswith(".txt"):
         with open(os.path.join(DATA_PATH, file), 'r') as f:
-            OUTPUTS = len(f.read().split(','))
+            content = f.read()
+            OUTPUTS = int((len(content.split('\n')[0].split(');(')) + 0.5) * len([line for line in content.split('\n') if line != '']))
             break
 if OUTPUTS is None:
     print("No labels found, exiting...")
@@ -61,10 +61,24 @@ if IMG_COUNT == 0:
     print("No images found, exiting...")
     exit()
 
-if IMG_CHANNELS == 'Grayscale' or IMG_CHANNELS == 'Binarize':
-    COLOR_CHANNELS = 1
-else:
-    COLOR_CHANNELS = len(IMG_CHANNELS)
+LANES = None
+for file in os.listdir(DATA_PATH):
+    if file.endswith(".txt"):
+        with open(os.path.join(DATA_PATH, file), 'r') as f:
+            content = f.readlines()
+            LANES = 0
+            for line in content:
+                linedata = line.split(";")
+                index, line, exists = linedata[0:3]
+                index = int(index.split("#")[1])
+                line = str(line.split("#")[1])
+                exists = int(exists.split("#")[1])
+                if line == "L" and LANES == index:
+                    LANES += 1
+            break
+if LANES is None:
+    print("No lanes found, exiting...")
+    exit()
 
 RED = "\033[91m"
 GREEN = "\033[92m"
@@ -82,11 +96,10 @@ print(timestamp() + "Training settings:")
 print(timestamp() + "> Epochs:", NUM_EPOCHS)
 print(timestamp() + "> Batch size:", BATCH_SIZE)
 print(timestamp() + "> Outputs:", OUTPUTS)
+print(timestamp() + "> Lanes:", LANES)
 print(timestamp() + "> Images:", IMG_COUNT)
 print(timestamp() + "> Image width:", IMG_WIDTH)
 print(timestamp() + "> Image height:", IMG_HEIGHT)
-print(timestamp() + "> Image channels:", IMG_CHANNELS)
-print(timestamp() + "> Color channels:", COLOR_CHANNELS)
 print(timestamp() + "> Learning rate:", LEARNING_RATE)
 print(timestamp() + "> Max learning rate:", MAX_LEARNING_RATE)
 print(timestamp() + "> Dataset split:", TRAIN_VAL_RATIO)
@@ -107,46 +120,37 @@ if CACHE:
         print(f"\r{timestamp()}Caching {type} dataset...           ", end='', flush=True)
         for file in os.listdir(DATA_PATH):
             if file in files:
-                if IMG_CHANNELS== 'Grayscale' or IMG_CHANNELS == 'Binarize':
-                    img = Image.open(os.path.join(DATA_PATH, file)).convert('L')  # Convert to grayscale
-                    img = np.array(img)
-                else:
-                    img = Image.open(os.path.join(DATA_PATH, file))
-                    img = np.array(img)
-
-                    if IMG_CHANNELS == 'RG':
-                        img = np.stack((img[:, :, 0], img[:, :, 1]), axis=2)
-                    elif IMG_CHANNELS == 'GB':
-                        img = np.stack((img[:, :, 1], img[:, :, 2]), axis=2)
-                    elif IMG_CHANNELS == 'RB':
-                        img = np.stack((img[:, :, 0], img[:, :, 2]), axis=2)
-                    elif IMG_CHANNELS == 'R':
-                        img = img[:, :, 0]
-                        img = np.expand_dims(img, axis=2)
-                    elif IMG_CHANNELS == 'G':
-                        img = img[:, :, 1]
-                        img = np.expand_dims(img, axis=2)
-                    elif IMG_CHANNELS == 'B':
-                        img = img[:, :, 2]
-                        img = np.expand_dims(img, axis=2)
-
+                img = cv2.imread(os.path.join(DATA_PATH, file), cv2.IMREAD_UNCHANGED)
+                if len(img.shape) == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 img = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
                 img = img / 255.0
-
-                if IMG_CHANNELS == 'Binarize':
-                    img = cv2.threshold(img, 0.5, 1.0, cv2.THRESH_BINARY)[1]
 
                 labels_file = os.path.join(DATA_PATH, file.replace(file.split(".")[-1], "txt"))
                 if os.path.exists(labels_file):
                     with open(labels_file, 'r') as f:
-                        content = str(f.read()).split(',')
-                        label = [1 if i == 'True' else 0 if i == 'False' else float(i) for i in content]
+                        data = f.readlines()
+                        label = []
+                        for line in data:
+                            linedata = line.split(";")
+                            index, line, exists = linedata[0:3]
+                            index = int(index.split("#")[1])
+                            line = str(line.split("#")[1])
+                            exists = int(exists.split("#")[1])
+                            if line == "L" and len(label) == index:
+                                label.append(exists)
+                        for line in data:
+                            linedata = line.split(";")
+                            coordinates = linedata[3:]
+                            for point in coordinates:
+                                x, _ = eval(point.replace("\n", ""))
+                                label.append(x)
                     images.append(img)
                     labels.append(label)
                 else:
                     pass
 
-            if len(images) % round(len(files) / 100) == 0:
+            if len(images) % round(len(files) / 100) if round(len(files) / 100) != 0 else 1 == 0:
                 print(f"\r{timestamp()}Caching {type} dataset... ({round(100 * len(images) / len(files))}%)", end='', flush=True)
 
         return np.array(images, dtype=np.float32), np.array(labels, dtype=np.float32)
@@ -181,38 +185,29 @@ else:
             image_path = os.path.join(DATA_PATH, image_name)
             label_path = os.path.join(DATA_PATH, image_name.replace(image_name.split('.')[-1], 'txt'))
 
-            if IMG_CHANNELS== 'Grayscale' or IMG_CHANNELS == 'Binarize':
-                img = Image.open(image_path).convert('L')
-                img = np.array(img)
-            else:
-                img = Image.open(image_path)
-                img = np.array(img)
-
-                if IMG_CHANNELS == 'RG':
-                    img = np.stack((img[:, :, 0], img[:, :, 1]), axis=2)
-                elif IMG_CHANNELS == 'GB':
-                    img = np.stack((img[:, :, 1], img[:, :, 2]), axis=2)
-                elif IMG_CHANNELS == 'RB':
-                    img = np.stack((img[:, :, 0], img[:, :, 2]), axis=2)
-                elif IMG_CHANNELS == 'R':
-                    img = img[:, :, 0]
-                    img = np.expand_dims(img, axis=2)
-                elif IMG_CHANNELS == 'G':
-                    img = img[:, :, 1]
-                    img = np.expand_dims(img, axis=2)
-                elif IMG_CHANNELS == 'B':
-                    img = img[:, :, 2]
-                    img = np.expand_dims(img, axis=2)
-
+            img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            if len(img.shape) == 3:
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             img = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
             img = img / 255.0
 
-            if IMG_CHANNELS == 'Binarize':
-                img = cv2.threshold(img, 0.5, 1.0, cv2.THRESH_BINARY)[1]
-
             with open(label_path, 'r') as f:
-                content = str(f.read()).split(',')
-                label = [1 if i == 'True' else 0 if i == 'False' else float(i) for i in content]
+                data = f.readlines()
+                label = []
+                for line in data:
+                    linedata = line.split(";")
+                    index, line, exists = linedata[0:3]
+                    index = int(index.split("#")[1])
+                    line = str(line.split("#")[1])
+                    exists = int(exists.split("#")[1])
+                    if line == "L" and len(label) == index:
+                        label.append(exists)
+                for line in data:
+                    linedata = line.split(";")
+                    coordinates = linedata[3:]
+                    for point in coordinates:
+                        x, _ = eval(point.replace("\n", ""))
+                        label.append(x)
 
             image = np.array(img, dtype=np.float32)
             image = self.transform(image)
@@ -222,7 +217,7 @@ else:
 class ConvolutionalNeuralNetwork(nn.Module):
     def __init__(self):
         super(ConvolutionalNeuralNetwork, self).__init__()
-        self.conv1 = nn.Conv2d(COLOR_CHANNELS, 16, 3, padding=1)
+        self.conv1 = nn.Conv2d(1, 16, 3, padding=1)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
         self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
@@ -269,18 +264,18 @@ def main():
     print(timestamp() + "Loading...")
 
     # Create tensorboard logs folder if it doesn't exist
-    if not os.path.exists(f"{PATH}/Training/Regression/logs"):
-        os.makedirs(f"{PATH}/Training/Regression/logs")
+    if not os.path.exists(f"{PATH}/Train/logs"):
+        os.makedirs(f"{PATH}/Train/logs")
 
     # Delete previous tensorboard logs
-    for obj in os.listdir(f"{PATH}/Training/Regression/logs"):
+    for obj in os.listdir(f"{PATH}/Train/logs"):
         try:
-            shutil.rmtree(f"{PATH}/Training/Regression/logs/{obj}")
+            shutil.rmtree(f"{PATH}/Train/logs/{obj}")
         except:
-            os.remove(f"{PATH}/Training/Regression/logs/{obj}")
+            os.remove(f"{PATH}/Train/logs/{obj}")
 
     # Tensorboard setup
-    summary_writer = SummaryWriter(f"{PATH}/Training/Regression/logs", comment="Regression-Training", flush_secs=20)
+    summary_writer = SummaryWriter(f"{PATH}/Train/logs", comment="Regression-Training", flush_secs=20)
 
     # Transformations
     train_transform = transforms.Compose([
@@ -298,6 +293,11 @@ def main():
     val_size = len(all_files) - train_size
     train_files = all_files[:train_size]
     val_files = all_files[train_size:]
+    if train_size == 0 or val_size == 0:
+        if len(train_files) > len(val_files):
+            val_files = train_files
+        else:
+            train_files = val_files
 
     if CACHE:
         train_images, train_labels = load_data(train_files, "train")
@@ -502,11 +502,10 @@ def main():
                 f"batch#{BATCH_SIZE}",
                 f"classes#{OUTPUTS}",
                 f"outputs#{OUTPUTS}",
+                f"lanes#{LANES}",
                 f"image_count#{IMG_COUNT}",
                 f"image_width#{IMG_WIDTH}",
                 f"image_height#{IMG_HEIGHT}",
-                f"image_channels#{IMG_CHANNELS}",
-                f"color_channels#{COLOR_CHANNELS}",
                 f"learning_rate#{LEARNING_RATE}",
                 f"max_learning_rate#{MAX_LEARNING_RATE}",
                 f"dataset_split#{TRAIN_VAL_RATIO}",
@@ -586,11 +585,10 @@ def main():
                 f"batch#{BATCH_SIZE}",
                 f"classes#{OUTPUTS}",
                 f"outputs#{OUTPUTS}",
+                f"lanes#{LANES}",
                 f"image_count#{IMG_COUNT}",
                 f"image_width#{IMG_WIDTH}",
                 f"image_height#{IMG_HEIGHT}",
-                f"image_channels#{IMG_CHANNELS}",
-                f"color_channels#{COLOR_CHANNELS}",
                 f"learning_rate#{LEARNING_RATE}",
                 f"max_learning_rate#{MAX_LEARNING_RATE}",
                 f"dataset_split#{TRAIN_VAL_RATIO}",

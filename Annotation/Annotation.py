@@ -177,7 +177,7 @@ while index < len(images):
             if lane_buttons[lane] == 1:
                 for i in range(2):
                     points = lanes[lane][i]
-                    export += f"Index#{lane},Line#{'L' if i == 0 else 'R'},Exists#1"
+                    export += f"Index#{lane};Line#{'L' if i == 0 else 'R'};Exists#1"
                     export_points = []
                     for j in range(0, export_resolution):
                         if upper_concentration:
@@ -200,14 +200,15 @@ while index < len(images):
                     export += "\n"
             else:
                 for i in range(2):
-                    export += f"Index#{lane},Line#{'L' if i == 0 else 'R'},Exists#0"
+                    export += f"Index#{lane};Line#{'L' if i == 0 else 'R'};Exists#0"
                     for j in range(export_resolution):
                         if upper_concentration:
                             new_y = (j / (export_resolution - 1)) ** 3
                         else:
                             new_y = j / (export_resolution - 1)
-                        export += f",{str((0 if max_lanes - lane > 0 else 1, new_y))}"
+                        export += f";{str((0 if max_lanes - lane > 0 else 1, new_y))}"
                     export += "\n" if lane < len(lane_buttons) else ""
+        export = export.replace(" ", "")
         try:
             shutil.copy2(f"{DATA_PATH}\\{images[index][1]}", f"{DST_PATH}\\{len(os.listdir(DST_PATH))//2}.{str(images[index][1]).split('.')[-1]}")
             with open(f"{DST_PATH}\\{len(os.listdir(DST_PATH))//2}.txt", "w") as f:
