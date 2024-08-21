@@ -27,16 +27,16 @@ PATH = os.path.dirname(os.path.dirname(__file__))
 DATA_PATH = PATH + "\\Datasets\\FinalDataset"
 MODEL_PATH = PATH + "\\Models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-NUM_EPOCHS = 200
+NUM_EPOCHS = 1000
 BATCH_SIZE = 1
 IMG_WIDTH = 400
 IMG_HEIGHT = 400
 LEARNING_RATE = 0.0001
-MAX_LEARNING_RATE = 0.0001
+MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 0.8
 NUM_WORKERS = 0
-DROPOUT = 0.5
-PATIENCE = 10
+DROPOUT = 0.0
+PATIENCE = -1
 SHUFFLE = True
 PIN_MEMORY = False
 DROP_LAST = True
@@ -47,7 +47,7 @@ for file in os.listdir(DATA_PATH):
     if file.endswith(".txt"):
         with open(os.path.join(DATA_PATH, file), 'r') as f:
             content = f.read()
-            OUTPUTS = int((len(content.split('\n')[0].split(');(')) + 0.5) * len([line for line in content.split('\n') if line != '']))
+            OUTPUTS = int((len(content.split('\n')[0].split(');(')) + 1) * len([line for line in content.split('\n') if line != '']))
             break
 if OUTPUTS is None:
     print("No labels found, exiting...")
@@ -137,8 +137,9 @@ if CACHE:
                             index = int(index.split("#")[1])
                             line = str(line.split("#")[1])
                             exists = int(exists.split("#")[1])
-                            if line == "L" and len(label) == index:
+                            if line == "L" and len(label) // 2 == index:
                                 label.append(exists)
+                                label.append(1 - exists)
                         for line in data:
                             linedata = line.split(";")
                             coordinates = linedata[3:]
@@ -200,8 +201,9 @@ else:
                     index = int(index.split("#")[1])
                     line = str(line.split("#")[1])
                     exists = int(exists.split("#")[1])
-                    if line == "L" and len(label) == index:
+                    if line == "L" and len(label) // 2 == index:
                         label.append(exists)
+                        label.append(1 - exists)
                 for line in data:
                     linedata = line.split(";")
                     coordinates = linedata[3:]
@@ -227,14 +229,66 @@ class ConvolutionalNeuralNetwork(nn.Module):
         self.dropout = nn.Dropout(DROPOUT)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))  # 420x220 -> 210x110
-        x = self.pool(F.relu(self.conv2(x)))  # 210x110 -> 105x55
-        x = self.pool(F.relu(self.conv3(x)))  # 105x55 -> 52x27
-        x = x.view(-1, self._to_linear)  # Flatten the tensor
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = self.pool(F.relu(self.conv3(x)))
+        x = x.view(-1, self._to_linear)
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
         return x
+
+def get_text_size(text="NONE", text_width=100, max_text_height=100):
+    fontscale = 1
+    textsize, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fontscale, 1)
+    width_current_text, height_current_text = textsize
+    max_count_current_text = 3
+    while width_current_text != text_width or height_current_text > max_text_height:
+        fontscale *= min(text_width / textsize[0], max_text_height / textsize[1])
+        textsize, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fontscale, 1)
+        max_count_current_text -= 1
+        if max_count_current_text <= 0:
+            break
+    thickness = round(fontscale * 2)
+    if thickness <= 0:
+        thickness = 1
+    return text, fontscale, thickness, textsize[0], textsize[1]
+
+def generate_tensorboard_image(model, dataset, resolution):
+    random_index = random.randint(0, len(dataset) - 1)
+    image, label = dataset[random_index]
+    label = label.tolist()
+    with torch.no_grad():
+        prediction = model(image.unsqueeze(0).to(DEVICE)).tolist()[0]
+    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGR), (resolution, resolution))
+    frame = np.zeros((resolution, round(resolution * 1.5), 3), dtype=np.float32)
+    frame[0:image.shape[0], 0:image.shape[1]] = image
+    for i, value in enumerate(prediction[0:LANES * 2]):
+        if i % 2 == 0:
+            value_1 = value
+            value_2 = prediction[0:LANES * 2][i + 1]
+            text, fontscale, thickness, width, height = get_text_size(f"Lane {i - 3}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
+            cv2.putText(frame, text, (round(resolution + height * 0.5), round((i + 1) * height * 1.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (255, 255, 255), thickness)
+    points_per_lane = (OUTPUTS - LANES * 2) / (LANES * 2)
+    for i in range(LANES):
+        for j in range(2):
+            last_point = None
+            points = label[int(LANES * 2 + points_per_lane * i * 2 + points_per_lane * j):int(LANES * 2 + points_per_lane * (i * 2 + 1) + points_per_lane * j)]
+            for k, x in enumerate(points):
+                y = (k / (points_per_lane - 1)) ** 3
+                if last_point != None:
+                    cv2.line(frame, (round(last_point[0] * resolution), round(last_point[1] * resolution)), (round(x * resolution), round(y * resolution)), (0, 255, 0), 1)
+                last_point = x, y
+    for i in range(LANES):
+        for j in range(2):
+            last_point = None
+            points = prediction[int(LANES * 2 + points_per_lane * i * 2 + points_per_lane * j):int(LANES * 2 + points_per_lane * (i * 2 + 1) + points_per_lane * j)]
+            for k, x in enumerate(points):
+                y = (k / (points_per_lane - 1)) ** 3
+                if last_point != None:
+                    cv2.line(frame, (round(last_point[0] * resolution), round(last_point[1] * resolution)), (round(x * resolution), round(y * resolution)), (255, 255, 0), 2)
+                last_point = x, y
+    return frame
 
 def main():
     # Initialize model
@@ -425,13 +479,14 @@ def main():
             if wait >= PATIENCE and PATIENCE > 0:
                 epoch_total_time = time.time() - epoch_total_start_time
                 # Log values to Tensorboard
-                summary_writer.add_scalars(f'Stats', {
+                summary_writer.add_scalars("Stats", {
                     'train_loss': training_loss,
                     'validation_loss': validation_loss,
                     'epoch_total_time': epoch_total_time,
                     'epoch_training_time': epoch_training_time,
                     'epoch_validation_time': epoch_validation_time
                 }, epoch)
+                summary_writer.add_image("Image", generate_tensorboard_image(model, val_dataset, 700), global_step=epoch, dataformats="HWC")
                 training_time_prediction = time.time()
                 PROGRESS_PRINT = "early stopped"
                 break
@@ -446,6 +501,7 @@ def main():
             'epoch_training_time': epoch_training_time,
             'epoch_validation_time': epoch_validation_time
         }, epoch)
+        summary_writer.add_image("Image", generate_tensorboard_image(model, val_dataset, 700), global_step=epoch, dataformats="HWC")
         training_epoch = epoch
         training_time_prediction = time.time()
         PROGRESS_PRINT = "running"
