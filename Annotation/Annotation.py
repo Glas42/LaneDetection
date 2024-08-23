@@ -194,9 +194,9 @@ while index < len(images):
                                 break
                         if above is not None and below is not None:
                             new_x = below[0] + (above[0] - below[0]) * (new_y - below[1]) / (above[1] - below[1])
-                            export += f",{str((new_x, new_y))}"
+                            export += f";{str((new_x, new_y))}"
                         else:
-                            export += f",{str((points[-1][0], new_y))}"
+                            export += f";{str((points[-1][0], new_y))}"
                     export += "\n"
             else:
                 for i in range(2):

@@ -28,14 +28,14 @@ DATA_PATH = PATH + "\\Datasets\\FinalDataset"
 MODEL_PATH = PATH + "\\Models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 NUM_EPOCHS = 1000
-BATCH_SIZE = 1
+BATCH_SIZE = 4
 IMG_WIDTH = 400
 IMG_HEIGHT = 400
 LEARNING_RATE = 0.0001
 MAX_LEARNING_RATE = 0.001
-TRAIN_VAL_RATIO = 0.8
+TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
-DROPOUT = 0.0
+DROPOUT = 0.3
 PATIENCE = -1
 SHUFFLE = True
 PIN_MEMORY = False
@@ -112,6 +112,10 @@ print(timestamp() + "> Drop last:", DROP_LAST)
 print(timestamp() + "> Cache:", CACHE)
 
 
+class custom():
+    class RandomHorizontalFlip():
+        pass
+
 # Custom dataset class
 if CACHE:
     def load_data(files=None, type=None):
@@ -167,8 +171,18 @@ if CACHE:
 
         def __getitem__(self, idx):
             image = self.images[idx]
-            label = self.labels[idx]
-            image = self.transform(image)
+            label = self.labels[idx].copy()
+            for transform in self.transform:
+                if isinstance(transform, custom.RandomHorizontalFlip):
+                    if random.uniform(0, 1) < 0.5:
+                        image = cv2.flip(image, 1)
+                        label[LANES * 2:] = [1 - x for x in label.tolist()[LANES * 2:]]
+                        label_pieces = [label[i:i+int((OUTPUTS - LANES * 2) / (LANES * 2))] for i in range(LANES * 2, OUTPUTS, int((OUTPUTS - LANES * 2) / (LANES * 2)))]
+                        label_pieces = label_pieces[::-1]
+                        new_label = [item for piece in label_pieces for item in piece]
+                        label[LANES * 2:] = new_label
+                else:
+                    image = transform(image)
             return image, torch.as_tensor(label, dtype=torch.float32)
 
 else:
@@ -212,7 +226,17 @@ else:
                         label.append(x)
 
             image = np.array(img, dtype=np.float32)
-            image = self.transform(image)
+            for transform in self.transform:
+                if isinstance(transform, custom.RandomHorizontalFlip):
+                    if random.uniform(0, 1) < 0.5:
+                        image = cv2.flip(image, 1)
+                        label[LANES * 2:] = [1 - x for x in label.tolist()[LANES * 2:]]
+                        label_pieces = [label[i:i+int((OUTPUTS - LANES * 2) / (LANES * 2))] for i in range(LANES * 2, OUTPUTS, int((OUTPUTS - LANES * 2) / (LANES * 2)))]
+                        label_pieces = label_pieces[::-1]
+                        new_label = [item for piece in label_pieces for item in piece]
+                        label[LANES * 2:] = new_label
+                else:
+                    image = transform(image)
             return image, torch.as_tensor(label, dtype=torch.float32)
 
 # Define the model
@@ -267,7 +291,7 @@ def generate_tensorboard_image(model, dataset, resolution):
         if i % 2 == 0:
             value_1 = value
             value_2 = prediction[0:LANES * 2][i + 1]
-            text, fontscale, thickness, width, height = get_text_size(f"Lane {i - 3}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
+            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - 3}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
             cv2.putText(frame, text, (round(resolution + height * 0.5), round((i + 1) * height * 1.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (255, 255, 255), thickness)
     points_per_lane = (OUTPUTS - LANES * 2) / (LANES * 2)
     for i in range(LANES):
@@ -332,13 +356,15 @@ def main():
     summary_writer = SummaryWriter(f"{PATH}/Train/logs", comment="Regression-Training", flush_secs=20)
 
     # Transformations
-    train_transform = transforms.Compose([
+    train_transform = (
+        custom.RandomHorizontalFlip(),
         transforms.ToTensor()
-    ])
+    )
 
-    val_transform = transforms.Compose([
+    val_transform = (
+        custom.RandomHorizontalFlip(),
         transforms.ToTensor()
-    ])
+    )
 
     # Create datasets
     all_files = [f for f in os.listdir(DATA_PATH) if (f.endswith(".png") or f.endswith(".jpg") or f.endswith(".jpeg")) and os.path.exists(f"{DATA_PATH}/{f.replace(f.split('.')[-1], 'txt')}")]
