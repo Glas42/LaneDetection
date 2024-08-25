@@ -16,7 +16,7 @@ DATA_PATH = PATH + "\\Datasets\\PreprocessedDataset"
 DST_PATH = PATH + "\\Datasets\\FinalDataset"
 
 fps = 60
-max_lanes = 3 # amount of lanes from center lane to left and right
+max_lanes = 0 # amount of lanes from center lane to left and right
 export_resolution = 10 # amout of points per lane line
 upper_concentration = True # whether to add more points to the upper part and less points to the lower part of the lane line when exporting
 

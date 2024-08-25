@@ -6,7 +6,8 @@ PATH = os.path.dirname(os.path.dirname(__file__))
 DATA_SRC_PATH = PATH + "\\Datasets\\RawDataset"
 DATA_DST_PATH = PATH + "\\Datasets\\PreprocessedDataset"
 
-tile_image = False
+tilt_image = False
+normalize = False
 resolution = 400
 
 def vertical_perspective_warp(image, angle):
@@ -26,18 +27,18 @@ for image in os.listdir(DATA_SRC_PATH):
 
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    if tile_image:
+    if tilt_image:
         image = vertical_perspective_warp(image, 26.5)
 
-    avg_color = 70
-    mean_color = np.mean(image)
-    if mean_color != avg_color:
-        scaling_factor = avg_color / mean_color
-        image = cv2.multiply(image, scaling_factor)
-        image = np.clip(image, 0, 255).astype(np.uint8)
+    if normalize:
+        avg_color = 70
+        mean_color = np.mean(image)
+        if mean_color != avg_color:
+            scaling_factor = avg_color / mean_color
+            image = cv2.multiply(image, scaling_factor)
+            image = np.clip(image, 0, 255).astype(np.uint8)
+        image = cv2.addWeighted(image, 4, cv2.GaussianBlur(image, (0, 0), 20), -4, 0)
 
-    image = cv2.addWeighted(image, 4, cv2.GaussianBlur(image, (0, 0), 20), -4, 0)
- 
     image = cv2.resize(image, (resolution, resolution))
 
     cv2.imwrite(f"{DATA_DST_PATH}\\{len([name for name in os.listdir(DATA_DST_PATH) if name.endswith('.png')])}.png", image)

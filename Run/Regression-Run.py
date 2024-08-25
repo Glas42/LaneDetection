@@ -72,7 +72,7 @@ def generate_image(model, image, resolution):
         if i % 2 == 0:
             value_1 = value
             value_2 = prediction[0:LANES * 2][i + 1]
-            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - 3}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
+            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - LANES // 2}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
             cv2.putText(frame, text, (round(resolution + height * 0.5), round((i + 1) * height * 1.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (255, 255, 255), thickness)
     points_per_lane = (OUTPUTS - LANES * 2) / (LANES * 2)
     for i in range(LANES):
@@ -99,14 +99,14 @@ while True:
     frame = frame[round(frame.shape[0] * 0.52):, :]
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    avg_color = 70
-    mean_color = np.mean(frame)
-    if mean_color != avg_color:
-        scaling_factor = avg_color / mean_color
-        frame = cv2.multiply(frame, scaling_factor)
-        frame = np.clip(frame, 0, 255).astype(np.uint8)
+    #avg_color = 70
+    #mean_color = np.mean(frame)
+    #if mean_color != avg_color:
+    #    scaling_factor = avg_color / mean_color
+    #    frame = cv2.multiply(frame, scaling_factor)
+    #    frame = np.clip(frame, 0, 255).astype(np.uint8)
 
-    frame = cv2.addWeighted(frame, 4, cv2.GaussianBlur(frame, (0, 0), 20), -4, 0)
+    #frame = cv2.addWeighted(frame, 4, cv2.GaussianBlur(frame, (0, 0), 20), -4, 0)
     frame = cv2.resize(frame, (IMG_WIDTH, IMG_HEIGHT))
 
     frame = transform(frame)

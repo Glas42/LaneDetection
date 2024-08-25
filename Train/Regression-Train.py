@@ -27,8 +27,8 @@ PATH = os.path.dirname(os.path.dirname(__file__))
 DATA_PATH = PATH + "\\Datasets\\FinalDataset"
 MODEL_PATH = PATH + "\\Models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-NUM_EPOCHS = 1000
-BATCH_SIZE = 4
+NUM_EPOCHS = 10000
+BATCH_SIZE = 8
 IMG_WIDTH = 400
 IMG_HEIGHT = 400
 LEARNING_RATE = 0.0001
@@ -36,10 +36,10 @@ MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
 DROPOUT = 0.3
-PATIENCE = -1
+PATIENCE = 500
 SHUFFLE = True
 PIN_MEMORY = False
-DROP_LAST = True
+DROP_LAST = False
 CACHE = True
 
 OUTPUTS = None
@@ -243,11 +243,11 @@ else:
 class ConvolutionalNeuralNetwork(nn.Module):
     def __init__(self):
         super(ConvolutionalNeuralNetwork, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, 3, padding=1)
+        self.conv1 = nn.Conv2d(1, 32, 3, padding=1)
         self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
-        self._to_linear = 64 * (IMG_WIDTH // 8) * (IMG_HEIGHT // 8)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+        self._to_linear = 128 * (IMG_WIDTH // 8) * (IMG_HEIGHT // 8)
         self.fc1 = nn.Linear(self._to_linear, 500)
         self.fc2 = nn.Linear(500, OUTPUTS)
         self.dropout = nn.Dropout(DROPOUT)
@@ -291,7 +291,7 @@ def generate_tensorboard_image(model, dataset, resolution):
         if i % 2 == 0:
             value_1 = value
             value_2 = prediction[0:LANES * 2][i + 1]
-            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - 3}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
+            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - LANES // 2}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
             cv2.putText(frame, text, (round(resolution + height * 0.5), round((i + 1) * height * 1.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (255, 255, 255), thickness)
     points_per_lane = (OUTPUTS - LANES * 2) / (LANES * 2)
     for i in range(LANES):
@@ -312,6 +312,8 @@ def generate_tensorboard_image(model, dataset, resolution):
                 if last_point != None:
                     cv2.line(frame, (round(last_point[0] * resolution), round(last_point[1] * resolution)), (round(x * resolution), round(y * resolution)), (255, 255, 0), 2)
                 last_point = x, y
+    cv2.imshow("LaneDetection", frame)
+    cv2.waitKey(1)
     return frame
 
 def main():
