@@ -35,27 +35,16 @@ LEARNING_RATE = 0.0001
 MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
-DROPOUT = 0.3
+DROPOUT = 0.8
 PATIENCE = 500
 SHUFFLE = True
 PIN_MEMORY = False
 DROP_LAST = False
 CACHE = True
 
-OUTPUTS = None
-for file in os.listdir(DATA_PATH):
-    if file.endswith(".txt"):
-        with open(os.path.join(DATA_PATH, file), 'r') as f:
-            content = f.read()
-            OUTPUTS = int((len(content.split('\n')[0].split(');(')) + 1) * len([line for line in content.split('\n') if line != '']))
-            break
-if OUTPUTS is None:
-    print("No labels found, exiting...")
-    exit()
-
 IMG_COUNT = 0
 for file in os.listdir(DATA_PATH):
-    if file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg"):
+    if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg")) and "#" not in file:
         IMG_COUNT += 1
 if IMG_COUNT == 0:
     print("No images found, exiting...")
@@ -63,19 +52,14 @@ if IMG_COUNT == 0:
 
 LANES = None
 for file in os.listdir(DATA_PATH):
-    if file.endswith(".txt"):
-        with open(os.path.join(DATA_PATH, file), 'r') as f:
-            content = f.readlines()
-            LANES = 0
-            for line in content:
-                linedata = line.split(";")
-                index, line, exists = linedata[0:3]
-                index = int(index.split("#")[1])
-                line = str(line.split("#")[1])
-                exists = int(exists.split("#")[1])
-                if line == "L" and LANES == index:
-                    LANES += 1
-            break
+    if "#" not in file:
+        count = 0
+        while True:
+            if os.path.exists(os.path.join(DATA_PATH, file.split('.')[0] + "#" + str(count) + "." + file.split('.')[-1])) == False:
+                count -= 1
+                break
+            count += 1
+        LANES = count * 2 + 1
 if LANES is None:
     print("No lanes found, exiting...")
     exit()
@@ -95,7 +79,6 @@ print()
 print(timestamp() + "Training settings:")
 print(timestamp() + "> Epochs:", NUM_EPOCHS)
 print(timestamp() + "> Batch size:", BATCH_SIZE)
-print(timestamp() + "> Outputs:", OUTPUTS)
 print(timestamp() + "> Lanes:", LANES)
 print(timestamp() + "> Images:", IMG_COUNT)
 print(timestamp() + "> Image width:", IMG_WIDTH)
@@ -130,30 +113,18 @@ if CACHE:
                 img = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
                 img = img / 255.0
 
-                labels_file = os.path.join(DATA_PATH, file.replace(file.split(".")[-1], "txt"))
-                if os.path.exists(labels_file):
-                    with open(labels_file, 'r') as f:
-                        data = f.readlines()
-                        label = []
-                        for line in data:
-                            linedata = line.split(";")
-                            index, line, exists = linedata[0:3]
-                            index = int(index.split("#")[1])
-                            line = str(line.split("#")[1])
-                            exists = int(exists.split("#")[1])
-                            if line == "L" and len(label) // 2 == index:
-                                label.append(exists)
-                                label.append(1 - exists)
-                        for line in data:
-                            linedata = line.split(";")
-                            coordinates = linedata[3:]
-                            for point in coordinates:
-                                x, _ = eval(point.replace("\n", ""))
-                                label.append(x)
-                    images.append(img)
-                    labels.append(label)
-                else:
-                    pass
+                lanes = []
+                for i in range(LANES):
+                    label_img = cv2.imread(os.path.join(DATA_PATH, file.split('.')[0] + "#" + str(i - LANES // 2) + "." + file.split('.')[-1]), cv2.IMREAD_UNCHANGED)
+                    if len(label_img.shape) == 3:
+                        label_img = cv2.cvtColor(label_img, cv2.COLOR_BGR2GRAY)
+                    label_img = cv2.resize(label_img, (IMG_WIDTH, IMG_HEIGHT))
+                    label_img = label_img / 255.0
+                    lanes.append(label_img)
+                lanes.reverse()
+
+                images.append(img)
+                labels.append(lanes)
 
             if len(images) % round(len(files) / 100) if round(len(files) / 100) != 0 else 1 == 0:
                 print(f"\r{timestamp()}Caching {type} dataset... ({round(100 * len(images) / len(files))}%)", end='', flush=True)
@@ -170,19 +141,18 @@ if CACHE:
             return len(self.images)
 
         def __getitem__(self, idx):
-            image = self.images[idx]
+            image = self.images[idx].copy()
             label = self.labels[idx].copy()
             for transform in self.transform:
                 if isinstance(transform, custom.RandomHorizontalFlip):
                     if random.uniform(0, 1) < 0.5:
                         image = cv2.flip(image, 1)
-                        label[LANES * 2:] = [1 - x for x in label.tolist()[LANES * 2:]]
-                        label_pieces = [label[i:i+int((OUTPUTS - LANES * 2) / (LANES * 2))] for i in range(LANES * 2, OUTPUTS, int((OUTPUTS - LANES * 2) / (LANES * 2)))]
-                        label_pieces = label_pieces[::-1]
-                        new_label = [item for piece in label_pieces for item in piece]
-                        label[LANES * 2:] = new_label
+                        for i, img in enumerate(label):
+                            label[i] = cv2.flip(img, 1)
                 else:
                     image = transform(image)
+                    for img in label:
+                        img = transform(img)
             return image, torch.as_tensor(label, dtype=torch.float32)
 
 else:
@@ -196,70 +166,84 @@ else:
             return len(self.files)
 
         def __getitem__(self, index):
-            image_name = self.files[index]
-            image_path = os.path.join(DATA_PATH, image_name)
-            label_path = os.path.join(DATA_PATH, image_name.replace(image_name.split('.')[-1], 'txt'))
+            file = self.files[index]
 
-            img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            img = cv2.imread(os.path.join(DATA_PATH, file), cv2.IMREAD_UNCHANGED)
             if len(img.shape) == 3:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             img = cv2.resize(img, (IMG_WIDTH, IMG_HEIGHT))
             img = img / 255.0
 
-            with open(label_path, 'r') as f:
-                data = f.readlines()
-                label = []
-                for line in data:
-                    linedata = line.split(";")
-                    index, line, exists = linedata[0:3]
-                    index = int(index.split("#")[1])
-                    line = str(line.split("#")[1])
-                    exists = int(exists.split("#")[1])
-                    if line == "L" and len(label) // 2 == index:
-                        label.append(exists)
-                        label.append(1 - exists)
-                for line in data:
-                    linedata = line.split(";")
-                    coordinates = linedata[3:]
-                    for point in coordinates:
-                        x, _ = eval(point.replace("\n", ""))
-                        label.append(x)
+            lanes = []
+            for i in range(LANES):
+                label_img = cv2.imread(os.path.join(DATA_PATH, file.split('.')[0] + "#" + str(i - LANES // 2) + "." + file.split('.')[-1]), cv2.IMREAD_UNCHANGED)
+                if len(label_img.shape) == 3:
+                    label_img = cv2.cvtColor(label_img, cv2.COLOR_BGR2GRAY)
+                label_img = cv2.resize(label_img, (IMG_WIDTH, IMG_HEIGHT))
+                label_img = label_img / 255.0
+                lanes.append(label_img)
+            lanes.reverse()
+            label = np.array(lanes, dtype=np.float32)
 
             image = np.array(img, dtype=np.float32)
             for transform in self.transform:
                 if isinstance(transform, custom.RandomHorizontalFlip):
                     if random.uniform(0, 1) < 0.5:
                         image = cv2.flip(image, 1)
-                        label[LANES * 2:] = [1 - x for x in label.tolist()[LANES * 2:]]
-                        label_pieces = [label[i:i+int((OUTPUTS - LANES * 2) / (LANES * 2))] for i in range(LANES * 2, OUTPUTS, int((OUTPUTS - LANES * 2) / (LANES * 2)))]
-                        label_pieces = label_pieces[::-1]
-                        new_label = [item for piece in label_pieces for item in piece]
-                        label[LANES * 2:] = new_label
+                        for i, img in enumerate(label):
+                            label[i] = cv2.flip(img, 1)
                 else:
                     image = transform(image)
+                    for img in label:
+                        img = transform(img)
             return image, torch.as_tensor(label, dtype=torch.float32)
 
 # Define the model
-class ConvolutionalNeuralNetwork(nn.Module):
+class NeuralNetwork(nn.Module):
     def __init__(self):
-        super(ConvolutionalNeuralNetwork, self).__init__()
+        super(NeuralNetwork, self).__init__()
+        
+        # Encoder
         self.conv1 = nn.Conv2d(1, 32, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.pool1 = nn.MaxPool2d(2, 2)
+        
         self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
-        self._to_linear = 128 * (IMG_WIDTH // 8) * (IMG_HEIGHT // 8)
-        self.fc1 = nn.Linear(self._to_linear, 500)
-        self.fc2 = nn.Linear(500, OUTPUTS)
-        self.dropout = nn.Dropout(DROPOUT)
+        self.conv4 = nn.Conv2d(128, 256, 3, padding=1)
+        self.pool2 = nn.MaxPool2d(2, 2)
+        
+        # Decoder
+        self.conv5 = nn.Conv2d(256, 128, 3, padding=1)
+        self.conv6 = nn.Conv2d(128, 64, 3, padding=1)
+        self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        
+        self.conv7 = nn.Conv2d(64, 32, 3, padding=1)
+        self.conv8 = nn.Conv2d(32, 1, 3, padding=1)
+        self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        
+        self.activation = nn.Sigmoid()
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = self.pool(F.relu(self.conv3(x)))
-        x = x.view(-1, self._to_linear)
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
+        # Encoder
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = self.pool1(x)
+        
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = self.pool2(x)
+        
+        # Decoder
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
+        x = self.up1(x)
+        
+        x = F.relu(self.conv7(x))
+        x = self.conv8(x)
+        x = self.up2(x)
+        
+        x = self.activation(x)
+        
         return x
 
 def get_text_size(text="NONE", text_width=100, max_text_height=100):
@@ -281,44 +265,34 @@ def get_text_size(text="NONE", text_width=100, max_text_height=100):
 def generate_tensorboard_image(model, dataset, resolution):
     random_index = random.randint(0, len(dataset) - 1)
     image, label = dataset[random_index]
-    label = label.tolist()
     with torch.no_grad():
-        prediction = model(image.unsqueeze(0).to(DEVICE)).tolist()[0]
-    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGR), (resolution, resolution))
-    frame = np.zeros((resolution, round(resolution * 1.5), 3), dtype=np.float32)
+        prediction = model(image.unsqueeze(0).to(DEVICE))
+
+    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
+    frame = np.zeros((resolution, round(resolution * 1.5), 4), dtype=np.float32)
     frame[0:image.shape[0], 0:image.shape[1]] = image
-    for i, value in enumerate(prediction[0:LANES * 2]):
-        if i % 2 == 0:
-            value_1 = value
-            value_2 = prediction[0:LANES * 2][i + 1]
-            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - LANES // 2}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
-            cv2.putText(frame, text, (round(resolution + height * 0.5), round((i + 1) * height * 1.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (255, 255, 255), thickness)
-    points_per_lane = (OUTPUTS - LANES * 2) / (LANES * 2)
-    for i in range(LANES):
-        for j in range(2):
-            last_point = None
-            points = label[int(LANES * 2 + points_per_lane * i * 2 + points_per_lane * j):int(LANES * 2 + points_per_lane * (i * 2 + 1) + points_per_lane * j)]
-            for k, x in enumerate(points):
-                y = (k / (points_per_lane - 1)) ** 3
-                if last_point != None:
-                    cv2.line(frame, (round(last_point[0] * resolution), round(last_point[1] * resolution)), (round(x * resolution), round(y * resolution)), (0, 255, 0), 1)
-                last_point = x, y
-    for i in range(LANES):
-        for j in range(2):
-            last_point = None
-            points = prediction[int(LANES * 2 + points_per_lane * i * 2 + points_per_lane * j):int(LANES * 2 + points_per_lane * (i * 2 + 1) + points_per_lane * j)]
-            for k, x in enumerate(points):
-                y = (k / (points_per_lane - 1)) ** 3
-                if last_point != None:
-                    cv2.line(frame, (round(last_point[0] * resolution), round(last_point[1] * resolution)), (round(x * resolution), round(y * resolution)), (255, 255, 0), 2)
-                last_point = x, y
-    cv2.imshow("LaneDetection", frame)
+
+    for i, label_img in enumerate(label):
+        label_img = cv2.resize(cv2.cvtColor(label_img.numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
+        label_img[:, :, 0] = 0
+        label_img[:, :, 2] = 0
+        frame[0:image.shape[0], 0:image.shape[1]] = cv2.addWeighted(frame[0:image.shape[0], 0:image.shape[1]], 1, label_img, 0.2, 0)
+
+    prediction = prediction.squeeze(0).cpu()
+    for i, pred_img in enumerate(prediction):
+        pred_img = cv2.resize(cv2.cvtColor(pred_img.numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
+        label_img[:, :, 1] = 0
+        pred_img[:, :, 2] = 0
+        frame[0:image.shape[0], 0:image.shape[1]] = cv2.addWeighted(frame[0:image.shape[0], 0:image.shape[1]], 1, pred_img, 0.5, 0)
+
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    cv2.imshow("image", frame)
     cv2.waitKey(1)
     return frame
 
 def main():
     # Initialize model
-    model = ConvolutionalNeuralNetwork().to(DEVICE)
+    model = NeuralNetwork().to(DEVICE)
 
     def get_model_size_mb(model):
         total_params = 0
@@ -369,7 +343,7 @@ def main():
     )
 
     # Create datasets
-    all_files = [f for f in os.listdir(DATA_PATH) if (f.endswith(".png") or f.endswith(".jpg") or f.endswith(".jpeg")) and os.path.exists(f"{DATA_PATH}/{f.replace(f.split('.')[-1], 'txt')}")]
+    all_files = [f for f in os.listdir(DATA_PATH) if (f.endswith(".png") or f.endswith(".jpg") or f.endswith(".jpeg")) and "#" not in f]
     random.shuffle(all_files)
     train_size = int(len(all_files) * TRAIN_VAL_RATIO)
     val_size = len(all_files) - train_size
@@ -584,8 +558,6 @@ def main():
     metadata_model = str(model).replace('\n', '')
     metadata = (f"epochs#{epoch}",
                 f"batch#{BATCH_SIZE}",
-                f"classes#{OUTPUTS}",
-                f"outputs#{OUTPUTS}",
                 f"lanes#{LANES}",
                 f"image_count#{IMG_COUNT}",
                 f"image_width#{IMG_WIDTH}",
@@ -667,8 +639,6 @@ def main():
     metadata_model = str(best_model).replace('\n', '')
     metadata = (f"epochs#{best_model_epoch}",
                 f"batch#{BATCH_SIZE}",
-                f"classes#{OUTPUTS}",
-                f"outputs#{OUTPUTS}",
                 f"lanes#{LANES}",
                 f"image_count#{IMG_COUNT}",
                 f"image_width#{IMG_WIDTH}",

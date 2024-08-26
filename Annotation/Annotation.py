@@ -17,8 +17,6 @@ DST_PATH = PATH + "\\Datasets\\FinalDataset"
 
 fps = 60
 max_lanes = 0 # amount of lanes from center lane to left and right
-export_resolution = 10 # amout of points per lane line
-upper_concentration = True # whether to add more points to the upper part and less points to the lower part of the lane line when exporting
 
 index = 0
 remove_list = []
@@ -29,11 +27,11 @@ last_window_size = None, None
 grabbed_point = None, None, None
 
 lane_buttons = [0] * (max_lanes * 2 + 1)
-lanes = [[[(0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   0,    True), # x, y, tied_to_edge
+lanes = [[[(0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   0,    False), # x, y, tied_to_edge
            (0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   0.5,  False),
            (0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) - 1 / ((max_lanes * 2 + 2) * 2),   1,    True)
            ],
-          [(0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   0,    True),
+          [(0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   0,    False),
            (0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   0.5,  False),
            (0.5 - (i - (len(lane_buttons) - 1) / 2) / (max_lanes * 2 + 1) + 1 / ((max_lanes * 2 + 2) * 2),   1,    True)
            ]] for i in range(max_lanes * 2 + 1)]
@@ -172,49 +170,51 @@ while index < len(images):
                                                       height_scale=0.5)
 
     if button_next_pressed == True and index < len(images) - 1:
-        export = ""
+        try:
+            shutil.copy2(f"{DATA_PATH}\\{images[index][1]}", f"{DST_PATH}\\{images[index][1]}")
+
+            for lane in range(len(lane_buttons)):
+                export_image = np.zeros((cv2.imread(f"{DATA_PATH}\\{images[index][1]}").shape[0], cv2.imread(f"{DATA_PATH}\\{images[index][1]}").shape[1]), np.uint8)
+
+                if lane_buttons[lane] == 1:
+                    left_points = []
+                    right_points = []
+                    for i in range(2):
+                        # check if there is a point with y = 1 in the points, if not add a point, the x of that point will be the x of the lowest original point
+                        has_y1_point = False
+                        lowest_x = None
+                        lowest_y = None
+                        for j in range(len(lanes[lane][i])):
+                            x, y, tied_to_edge = lanes[lane][i][j]
+                            if y == 1:
+                                has_y1_point = True
+                            if lowest_x is None or y > lowest_y:
+                                lowest_x = x
+                                lowest_y = y
+                        if not has_y1_point:
+                            lanes[lane][i].append((lowest_x, 1, "temp_point"))
+                        for j in range(len(lanes[lane][i])):
+                            x, y, tied_to_edge = lanes[lane][i][j]
+                            if i == 0:
+                                left_points.append((round(x * export_image.shape[1]), round(y * export_image.shape[0])))
+                            else:
+                                right_points.append((round(x * export_image.shape[1]), round(y * export_image.shape[0])))
+                    right_points.reverse()
+                    points = []
+                    for point in left_points:
+                        points.append(point)
+                    for point in right_points:
+                        points.append(point)
+                    cv2.fillPoly(export_image, np.array([points], dtype=np.int32), (255, 255, 255), cv2.LINE_AA)
+                cv2.imwrite(f"{DST_PATH}\\{str(images[index][1]).replace(str(images[index][1]).split('.')[-1], '').replace('.', '')}#{lane - max_lanes}.png", export_image)
+        except:
+            import traceback
+            traceback.print_exc()
         for lane in range(len(lane_buttons)):
             if lane_buttons[lane] == 1:
                 for i in range(2):
-                    points = lanes[lane][i]
-                    export += f"Index#{lane};Line#{'L' if i == 0 else 'R'};Exists#1"
-                    export_points = []
-                    for j in range(0, export_resolution):
-                        if upper_concentration:
-                            new_y = (j / (export_resolution - 1)) ** 3
-                        else:
-                            new_y = j / (export_resolution - 1)
-                        above = None
-                        below = None
-                        for k in range(len(points)):
-                            if points[k][1] <= new_y:
-                                below = points[k]
-                            if points[k][1] > new_y:
-                                above = points[k]
-                                break
-                        if above is not None and below is not None:
-                            new_x = below[0] + (above[0] - below[0]) * (new_y - below[1]) / (above[1] - below[1])
-                            export += f";{str((new_x, new_y))}"
-                        else:
-                            export += f";{str((points[-1][0], new_y))}"
-                    export += "\n"
-            else:
-                for i in range(2):
-                    export += f"Index#{lane};Line#{'L' if i == 0 else 'R'};Exists#0"
-                    for j in range(export_resolution):
-                        if upper_concentration:
-                            new_y = (j / (export_resolution - 1)) ** 3
-                        else:
-                            new_y = j / (export_resolution - 1)
-                        export += f";{str((0 if max_lanes - lane > 0 else 1, new_y))}"
-                    export += "\n" if lane < len(lane_buttons) else ""
-        export = export.replace(" ", "")
-        try:
-            shutil.copy2(f"{DATA_PATH}\\{images[index][1]}", f"{DST_PATH}\\{len(os.listdir(DST_PATH))//2}.{str(images[index][1]).split('.')[-1]}")
-            with open(f"{DST_PATH}\\{len(os.listdir(DST_PATH))//2}.txt", "w") as f:
-                f.write(export)
-        except:
-            pass
+                    while len(lanes[lane][i]) > 0 and lanes[lane][i][-1][2] == "temp_point":
+                        lanes[lane][i].pop()
         index += 1
 
     if button_back_pressed == True and index > 0:
@@ -276,7 +276,7 @@ while index < len(images):
                     elif x * image.shape[1] - radius <= mouse_x_image * image.shape[1] <= x * image.shape[1] + radius and y * image.shape[0] - radius <= mouse_y_image * image.shape[0] <= y * image.shape[0] + radius:
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), radius, (20, 220, 220), -1, cv2.LINE_AA)
                         allow_adding_points = False
-                        if tied_to_edge == False and right_clicked == True and last_right_clicked == False:
+                        if tied_to_edge == False and right_clicked == True and last_right_clicked == False and len(lanes[lane][i]) > 2:
                             remove_list.append((lane, i, j))
                     else:
                         cv2.circle(image, (round(x * image.shape[1]), round(y * image.shape[0])), round(radius * 0.7) if round(radius * 0.7) > 1 else 1, (0, 200, 200), -1, cv2.LINE_AA)
