@@ -31,7 +31,7 @@ NUM_EPOCHS = 10000
 BATCH_SIZE = 8
 IMG_WIDTH = 400
 IMG_HEIGHT = 400
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.00001
 MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
@@ -204,21 +204,24 @@ class NeuralNetwork(nn.Module):
         super(NeuralNetwork, self).__init__()
         
         # Encoder
-        self.conv1 = nn.Conv2d(1, 32, 3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv1 = nn.Conv2d(1, 64, 3, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
+        self.conv4 = nn.Conv2d(256, 256, 3, padding=1)
         self.pool1 = nn.MaxPool2d(2, 2)
         
-        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
-        self.conv4 = nn.Conv2d(128, 256, 3, padding=1)
+        self.conv5 = nn.Conv2d(256, 512, 3, padding=1)
+        self.conv6 = nn.Conv2d(512, 512, 3, padding=1)
         self.pool2 = nn.MaxPool2d(2, 2)
         
         # Decoder
-        self.conv5 = nn.Conv2d(256, 128, 3, padding=1)
-        self.conv6 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv7 = nn.Conv2d(512, 512, 3, padding=1)
+        self.conv8 = nn.Conv2d(512, 256, 3, padding=1)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         
-        self.conv7 = nn.Conv2d(64, 32, 3, padding=1)
-        self.conv8 = nn.Conv2d(32, 1, 3, padding=1)
+        self.conv9 = nn.Conv2d(256, 128, 3, padding=1)
+        self.conv10 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv11 = nn.Conv2d(64, 1, 3, padding=1)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         
         self.activation = nn.Sigmoid()
@@ -227,19 +230,22 @@ class NeuralNetwork(nn.Module):
         # Encoder
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        x = self.pool1(x)
-        
         x = F.relu(self.conv3(x))
         x = F.relu(self.conv4(x))
+        x = self.pool1(x)
+        
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
         x = self.pool2(x)
         
         # Decoder
-        x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
+        x = F.relu(self.conv7(x))
+        x = F.relu(self.conv8(x))
         x = self.up1(x)
         
-        x = F.relu(self.conv7(x))
-        x = self.conv8(x)
+        x = F.relu(self.conv9(x))
+        x = F.relu(self.conv10(x))
+        x = self.conv11(x)
         x = self.up2(x)
         
         x = self.activation(x)
