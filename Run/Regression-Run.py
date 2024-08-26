@@ -26,10 +26,8 @@ metadata = {"data": []}
 model = torch.jit.load(os.path.join(MODEL_PATH), _extra_files=metadata, map_location=device)
 model.eval()
 
-metadata = str(metadata["data"]).replace('b"(', '').replace(')"', '').replace("'", "").split(", ") # now in the format: ["key#value", "key#value", ...]
+metadata = eval(metadata["data"])
 for var in metadata:
-    if "outputs" in var:
-        OUTPUTS = int(var.split("#")[1])
     if "lanes" in var:
         LANES = int(var.split("#")[1])
     if "image_width" in var:
@@ -62,20 +60,17 @@ def get_text_size(text="NONE", text_width=100, max_text_height=100):
         thickness = 1
     return text, fontscale, thickness, textsize[0], textsize[1]
 
-def generate_image(model, image, resolution):
+def generate_image(model, frame, resolution):
     with torch.no_grad():
-        prediction = model(image.unsqueeze(0).to(device ))
+        prediction = model(frame.unsqueeze(0).to(device))
 
-    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
-    frame = np.zeros((resolution, round(resolution * 1.5), 4), dtype=np.float32)
-    frame[0:image.shape[0], 0:image.shape[1]] = image
+    frame = cv2.resize(cv2.cvtColor(frame.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
 
     prediction = prediction.squeeze(0).cpu()
     for i, pred_img in enumerate(prediction):
         pred_img = cv2.resize(cv2.cvtColor(pred_img.numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
-        pred_img[:, :, 1] = 0
         pred_img[:, :, 2] = 0
-        frame[0:image.shape[0], 0:image.shape[1]] = cv2.addWeighted(frame[0:image.shape[0], 0:image.shape[1]], 1, pred_img, 0.5, 0)
+        frame[0:frame.shape[0], 0:frame.shape[1]] = cv2.addWeighted(frame[0:frame.shape[0], 0:frame.shape[1]], 1, pred_img, 0.5, 0)
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
     return frame
