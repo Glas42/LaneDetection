@@ -64,26 +64,20 @@ def get_text_size(text="NONE", text_width=100, max_text_height=100):
 
 def generate_image(model, image, resolution):
     with torch.no_grad():
-        prediction = model(image.unsqueeze(0).to(device)).tolist()[0]
-    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGR), (resolution, resolution))
-    frame = np.zeros((resolution, round(resolution * 1.5), 3), dtype=np.float32)
+        prediction = model(image.unsqueeze(0).to(device ))
+
+    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
+    frame = np.zeros((resolution, round(resolution * 1.5), 4), dtype=np.float32)
     frame[0:image.shape[0], 0:image.shape[1]] = image
-    for i, value in enumerate(prediction[0:LANES * 2]):
-        if i % 2 == 0:
-            value_1 = value
-            value_2 = prediction[0:LANES * 2][i + 1]
-            text, fontscale, thickness, width, height = get_text_size(f"Lane {i // 2 - LANES // 2}: {round(F.softmax(torch.tensor([value_1, value_2]), dim=0).tolist()[0], 3)}", text_width=0.95 * frame.shape[1] - resolution, max_text_height=0.03 * frame.shape[0])
-            cv2.putText(frame, text, (round(resolution + height * 0.5), round((i + 1) * height * 1.5)), cv2.FONT_HERSHEY_SIMPLEX, fontscale, (255, 255, 255), thickness)
-    points_per_lane = (OUTPUTS - LANES * 2) / (LANES * 2)
-    for i in range(LANES):
-        for j in range(2):
-            last_point = None
-            points = prediction[int(LANES * 2 + points_per_lane * i * 2 + points_per_lane * j):int(LANES * 2 + points_per_lane * (i * 2 + 1) + points_per_lane * j)]
-            for k, x in enumerate(points):
-                y = (k / (points_per_lane - 1)) ** 3
-                if last_point != None:
-                    cv2.line(frame, (round(last_point[0] * resolution), round(last_point[1] * resolution)), (round(x * resolution), round(y * resolution)), (0, 255, 255), 2)
-                last_point = x, y
+
+    prediction = prediction.squeeze(0).cpu()
+    for i, pred_img in enumerate(prediction):
+        pred_img = cv2.resize(cv2.cvtColor(pred_img.numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
+        pred_img[:, :, 1] = 0
+        pred_img[:, :, 2] = 0
+        frame[0:image.shape[0], 0:image.shape[1]] = cv2.addWeighted(frame[0:image.shape[0], 0:image.shape[1]], 1, pred_img, 0.5, 0)
+
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
     return frame
 
 transform = transforms.Compose([
@@ -99,14 +93,6 @@ while True:
     frame = frame[round(frame.shape[0] * 0.52):, :]
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    #avg_color = 70
-    #mean_color = np.mean(frame)
-    #if mean_color != avg_color:
-    #    scaling_factor = avg_color / mean_color
-    #    frame = cv2.multiply(frame, scaling_factor)
-    #    frame = np.clip(frame, 0, 255).astype(np.uint8)
-
-    #frame = cv2.addWeighted(frame, 4, cv2.GaussianBlur(frame, (0, 0), 20), -4, 0)
     frame = cv2.resize(frame, (IMG_WIDTH, IMG_HEIGHT))
 
     frame = transform(frame)

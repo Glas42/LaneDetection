@@ -27,19 +27,19 @@ PATH = os.path.dirname(os.path.dirname(__file__))
 DATA_PATH = PATH + "\\Datasets\\FinalDataset"
 MODEL_PATH = PATH + "\\Models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-NUM_EPOCHS = 10000
+NUM_EPOCHS = 1000
 BATCH_SIZE = 8
 IMG_WIDTH = 400
 IMG_HEIGHT = 400
-LEARNING_RATE = 0.00001
+LEARNING_RATE = 0.0001
 MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
-DROPOUT = 0.8
+DROPOUT = 0.2
 PATIENCE = 500
 SHUFFLE = True
 PIN_MEMORY = False
-DROP_LAST = False
+DROP_LAST = True
 CACHE = True
 
 IMG_COUNT = 0
@@ -202,54 +202,46 @@ else:
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
-        
         # Encoder
-        self.conv1 = nn.Conv2d(1, 64, 3, padding=1)
-        self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv1 = nn.Conv2d(1, 128, 3, padding=1)
         self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
-        self.conv4 = nn.Conv2d(256, 256, 3, padding=1)
         self.pool1 = nn.MaxPool2d(2, 2)
-        
+
         self.conv5 = nn.Conv2d(256, 512, 3, padding=1)
-        self.conv6 = nn.Conv2d(512, 512, 3, padding=1)
-        self.pool2 = nn.MaxPool2d(2, 2)
-        
-        # Decoder
         self.conv7 = nn.Conv2d(512, 512, 3, padding=1)
-        self.conv8 = nn.Conv2d(512, 256, 3, padding=1)
+        self.pool2 = nn.MaxPool2d(2, 2)
+
+        # Decoder
+        self.conv9 = nn.Conv2d(512, 256, 3, padding=1)
+        self.conv11 = nn.Conv2d(256, 128, 3, padding=1)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        
-        self.conv9 = nn.Conv2d(256, 128, 3, padding=1)
-        self.conv10 = nn.Conv2d(128, 64, 3, padding=1)
-        self.conv11 = nn.Conv2d(64, 1, 3, padding=1)
+
+        self.conv13 = nn.Conv2d(128, 64, 3, padding=1)
+        self.conv15 = nn.Conv2d(64, 1, 3, padding=1)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        
+
         self.activation = nn.Sigmoid()
 
     def forward(self, x):
         # Encoder
         x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
         x = self.pool1(x)
-        
+
         x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
-        x = self.pool2(x)
-        
-        # Decoder
         x = F.relu(self.conv7(x))
-        x = F.relu(self.conv8(x))
-        x = self.up1(x)
-        
+        x = self.pool2(x)
+
+        # Decoder
         x = F.relu(self.conv9(x))
-        x = F.relu(self.conv10(x))
-        x = self.conv11(x)
+        x = F.relu(self.conv11(x))
+        x = self.up1(x)
+
+        x = F.relu(self.conv13(x))
+        x = self.conv15(x)
         x = self.up2(x)
-        
+
         x = self.activation(x)
-        
         return x
 
 def get_text_size(text="NONE", text_width=100, max_text_height=100):
@@ -268,33 +260,43 @@ def get_text_size(text="NONE", text_width=100, max_text_height=100):
         thickness = 1
     return text, fontscale, thickness, textsize[0], textsize[1]
 
+if os.name == 'nt':
+    from ctypes import windll, byref, sizeof, c_int
+    import win32gui, win32con
 def generate_tensorboard_image(model, dataset, resolution):
     random_index = random.randint(0, len(dataset) - 1)
     image, label = dataset[random_index]
     with torch.no_grad():
         prediction = model(image.unsqueeze(0).to(DEVICE))
 
-    image = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
-    frame = np.zeros((resolution, round(resolution * 1.5), 4), dtype=np.float32)
-    frame[0:image.shape[0], 0:image.shape[1]] = image
+    frame = cv2.resize(cv2.cvtColor(image.permute(1, 2, 0).numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
 
     for i, label_img in enumerate(label):
         label_img = cv2.resize(cv2.cvtColor(label_img.numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
         label_img[:, :, 0] = 0
         label_img[:, :, 2] = 0
-        frame[0:image.shape[0], 0:image.shape[1]] = cv2.addWeighted(frame[0:image.shape[0], 0:image.shape[1]], 1, label_img, 0.2, 0)
+        frame[0:frame.shape[0], 0:frame.shape[1]] = cv2.addWeighted(frame[0:frame.shape[0], 0:frame.shape[1]], 1, label_img, 0.2, 0)
 
     prediction = prediction.squeeze(0).cpu()
     for i, pred_img in enumerate(prediction):
         pred_img = cv2.resize(cv2.cvtColor(pred_img.numpy(), cv2.COLOR_GRAY2BGRA), (resolution, resolution))
-        label_img[:, :, 1] = 0
         pred_img[:, :, 2] = 0
-        frame[0:image.shape[0], 0:image.shape[1]] = cv2.addWeighted(frame[0:image.shape[0], 0:image.shape[1]], 1, pred_img, 0.5, 0)
+        frame[0:frame.shape[0], 0:frame.shape[1]] = cv2.addWeighted(frame[0:frame.shape[0], 0:frame.shape[1]], 1, pred_img, 0.5, 0)
 
     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-    cv2.imshow("image", frame)
+    try:
+        _, _, _, _ = cv2.getWindowImageRect("LaneDetection - Training")
+    except:
+        cv2.namedWindow("LaneDetection - Training", cv2.WINDOW_NORMAL)
+        if os.name == 'nt':
+            hwnd = win32gui.FindWindow(None, "LaneDetection - Training")
+            windll.dwmapi.DwmSetWindowAttribute(hwnd, 35, byref(c_int((0x000000))), sizeof(c_int))
+            hicon = win32gui.LoadImage(None, f"{PATH}/icon.ico", win32con.IMAGE_ICON, 0, 0, win32con.LR_LOADFROMFILE | win32con.LR_DEFAULTSIZE)
+            win32gui.SendMessage(hwnd, win32con.WM_SETICON, win32con.ICON_SMALL, hicon)
+            win32gui.SendMessage(hwnd, win32con.WM_SETICON, win32con.ICON_BIG, hicon)
+    cv2.imshow("LaneDetection - Training", frame)
     cv2.waitKey(1)
-    return frame
+    return frame[:, :, [2, 1, 0]]
 
 def main():
     # Initialize model
