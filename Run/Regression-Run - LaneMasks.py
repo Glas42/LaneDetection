@@ -13,7 +13,7 @@ camera = bettercam.create(output_color="BGR", output_idx=0)
 PATH = os.path.dirname(os.path.dirname(__file__)) + "\\Models"
 MODEL_PATH = ""
 for file in os.listdir(PATH):
-    if file.endswith(".pt"):
+    if file.endswith(".pt") and "LaneMasks" in file:
         MODEL_PATH = os.path.join(PATH, file)
         break
 if MODEL_PATH == "":

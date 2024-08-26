@@ -603,7 +603,7 @@ def main():
     for i in range(5):
         try:
             last_model = torch.jit.script(model)
-            torch.jit.save(last_model, os.path.join(MODEL_PATH, f"RegressionModel-LAST-{TRAINING_DATE}.pt"), _extra_files=metadata)
+            torch.jit.save(last_model, os.path.join(MODEL_PATH, f"LaneMasks-LAST-{TRAINING_DATE}.pt"), _extra_files=metadata)
             last_model_saved = True
             break
         except:
@@ -684,7 +684,7 @@ def main():
     for i in range(5):
         try:
             best_model = torch.jit.script(best_model)
-            torch.jit.save(best_model, os.path.join(MODEL_PATH, f"RegressionModel-BEST-{TRAINING_DATE}.pt"), _extra_files=metadata)
+            torch.jit.save(best_model, os.path.join(MODEL_PATH, f"LaneMasks-BEST-{TRAINING_DATE}.pt"), _extra_files=metadata)
             best_model_saved = True
             break
         except:
