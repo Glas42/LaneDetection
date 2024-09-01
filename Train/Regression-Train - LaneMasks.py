@@ -27,8 +27,8 @@ PATH = os.path.dirname(os.path.dirname(__file__))
 DATA_PATH = PATH + "\\Datasets\\FinalDataset"
 MODEL_PATH = PATH + "\\Models"
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-NUM_EPOCHS = 1000
-BATCH_SIZE = 8
+NUM_EPOCHS = 300
+BATCH_SIZE = 4
 IMG_WIDTH = 100
 IMG_HEIGHT = 100
 LEARNING_RATE = 0.0001
@@ -36,7 +36,7 @@ MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
 DROPOUT = 0.2
-PATIENCE = 500
+PATIENCE = 50
 SHUFFLE = True
 PIN_MEMORY = False
 DROP_LAST = True
@@ -98,6 +98,8 @@ print(timestamp() + "> Cache:", CACHE)
 class custom():
     class RandomHorizontalFlip():
         pass
+    class RandomBrightness():
+        pass
 
 # Custom dataset class
 if CACHE:
@@ -149,6 +151,9 @@ if CACHE:
                         image = cv2.flip(image, 1)
                         for i, img in enumerate(label):
                             label[i] = cv2.flip(img, 1)
+                elif isinstance(transform, custom.RandomBrightness):
+                    brightness_factor = np.random.uniform(0.5, 1.5)
+                    image = cv2.addWeighted(image, brightness_factor, np.zeros_like(image), 0, 0)
                 else:
                     image = transform(image)
                     for img in label:
@@ -192,6 +197,9 @@ else:
                         image = cv2.flip(image, 1)
                         for i, img in enumerate(label):
                             label[i] = cv2.flip(img, 1)
+                elif isinstance(transform, custom.RandomBrightness):
+                    brightness_factor = np.random.uniform(0.5, 1.5)
+                    image = cv2.addWeighted(image, brightness_factor, np.zeros_like(image), 0, 0)
                 else:
                     image = transform(image)
                     for img in label:
@@ -342,11 +350,13 @@ def main():
     # Transformations
     train_transform = (
         custom.RandomHorizontalFlip(),
+        custom.RandomBrightness(),
         transforms.ToTensor()
     )
 
     val_transform = (
         custom.RandomHorizontalFlip(),
+        custom.RandomBrightness(),
         transforms.ToTensor()
     )
 

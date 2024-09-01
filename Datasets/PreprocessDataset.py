@@ -23,8 +23,6 @@ print("Preprocessing...")
 for image in os.listdir(DATA_SRC_PATH):
     image = cv2.imread(os.path.join(DATA_SRC_PATH, image))
 
-    image = image[round(image.shape[0] * 0.52):, :]
-
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     if tilt_image:

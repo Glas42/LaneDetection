@@ -40,8 +40,13 @@ lanes = [[[((np.clip(x, 0, 1), y, tied_to_edge)) for x, y, tied_to_edge in lane]
 print("Caching images...")
 
 images = []
+i = 0
 for file in os.listdir(DATA_PATH):
-    if (file.endswith(".png") or file.endswith(".jpg") or file.endswith(".jpeg")) and os.path.exists(f"{DST_PATH}\\{file.replace(file.split('.')[-1], 'txt')}") == False:
+    exists = False
+    for i in range(15):
+        if os.path.exists(f"{DST_PATH}\\{file.split('.')[0].split('#')[0]}#{i - 7}.{file.split('.')[-1]}") == True:
+            exists = True
+    if exists == False:
         image = cv2.imread(f"{DATA_PATH}\\{file}", cv2.IMREAD_UNCHANGED)
         if len(image.shape) == 3:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
