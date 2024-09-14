@@ -16,6 +16,7 @@ DATA_PATH = PATH + "\\Datasets\\PreprocessedDataset"
 DST_PATH = PATH + "\\Datasets\\FinalDataset"
 
 fps = 60
+shuffle = True
 max_lanes = 0 # amount of lanes from center lane to left and right
 
 index = 0
@@ -52,6 +53,9 @@ for file in os.listdir(DATA_PATH):
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         cv2.resize(image, (image.shape[1], image.shape[0]))
         images.append((image, file))
+
+if shuffle == True:
+    np.random.shuffle(images)
 
 print("Done!")
 

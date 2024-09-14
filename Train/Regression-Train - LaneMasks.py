@@ -6,8 +6,8 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset, DataLoader
-from torch.cuda.amp import GradScaler, autocast
 import torch.optim.lr_scheduler as lr_scheduler
+from torch.amp import GradScaler, autocast
 from torchvision import transforms
 import torch.nn.functional as F
 import torch.optim as optim
@@ -36,7 +36,7 @@ MAX_LEARNING_RATE = 0.001
 TRAIN_VAL_RATIO = 1
 NUM_WORKERS = 0
 DROPOUT = 0.2
-PATIENCE = 50
+PATIENCE = 10
 SHUFFLE = True
 PIN_MEMORY = False
 DROP_LAST = True
@@ -98,8 +98,6 @@ print(timestamp() + "> Cache:", CACHE)
 class custom():
     class RandomHorizontalFlip():
         pass
-    class RandomBrightness():
-        pass
 
 # Custom dataset class
 if CACHE:
@@ -151,9 +149,6 @@ if CACHE:
                         image = cv2.flip(image, 1)
                         for i, img in enumerate(label):
                             label[i] = cv2.flip(img, 1)
-                elif isinstance(transform, custom.RandomBrightness):
-                    brightness_factor = np.random.uniform(0.5, 1.5)
-                    image = cv2.addWeighted(image, brightness_factor, np.zeros_like(image), 0, 0)
                 else:
                     image = transform(image)
                     for img in label:
@@ -197,9 +192,6 @@ else:
                         image = cv2.flip(image, 1)
                         for i, img in enumerate(label):
                             label[i] = cv2.flip(img, 1)
-                elif isinstance(transform, custom.RandomBrightness):
-                    brightness_factor = np.random.uniform(0.5, 1.5)
-                    image = cv2.addWeighted(image, brightness_factor, np.zeros_like(image), 0, 0)
                 else:
                     image = transform(image)
                     for img in label:
@@ -210,6 +202,10 @@ else:
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super(NeuralNetwork, self).__init__()
+        self.lanes = LANES
+        self.width = IMG_WIDTH
+        self.height = IMG_HEIGHT
+
         # Encoder
         self.conv1 = nn.Conv2d(1, 128, 3, padding=1)
         self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
@@ -227,6 +223,8 @@ class NeuralNetwork(nn.Module):
         self.conv13 = nn.Conv2d(128, 64, 3, padding=1)
         self.conv15 = nn.Conv2d(64, 1, 3, padding=1)
         self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+        self.fc1 = nn.Linear(self.width * self.height, self.lanes * self.width * self.height)
 
         self.activation = nn.Sigmoid()
 
@@ -248,6 +246,10 @@ class NeuralNetwork(nn.Module):
         x = F.relu(self.conv13(x))
         x = self.conv15(x)
         x = self.up2(x)
+
+        x = self.fc1(x.view(x.size(0), -1))
+
+        x = x.view(x.size(0), self.lanes, self.width, self.height)
 
         x = self.activation(x)
         return x
@@ -350,13 +352,11 @@ def main():
     # Transformations
     train_transform = (
         custom.RandomHorizontalFlip(),
-        custom.RandomBrightness(),
         transforms.ToTensor()
     )
 
     val_transform = (
         custom.RandomHorizontalFlip(),
-        custom.RandomBrightness(),
         transforms.ToTensor()
     )
 
@@ -383,10 +383,10 @@ def main():
         val_dataset = CustomDataset(val_files, transform=val_transform)
 
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=SHUFFLE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, drop_last=DROP_LAST)
-    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=SHUFFLE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY, drop_last=DROP_LAST)
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=SHUFFLE, num_workers=NUM_WORKERS, pin_memory=PIN_MEMORY)
 
     # Initialize scaler, loss function, optimizer and scheduler
-    scaler = GradScaler()
+    scaler = GradScaler(device=str(DEVICE))
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=MAX_LEARNING_RATE, steps_per_epoch=len(train_dataloader), epochs=NUM_EPOCHS)
@@ -455,7 +455,7 @@ def main():
         for i, data in enumerate(train_dataloader, 0):
             inputs, labels = data[0].to(DEVICE, non_blocking=True), data[1].to(DEVICE, non_blocking=True)
             optimizer.zero_grad()
-            with autocast():
+            with autocast(device_type=str(DEVICE)):
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
             scaler.scale(loss).backward()
@@ -474,7 +474,7 @@ def main():
         # Validation phase
         model.eval()
         running_validation_loss = 0.0
-        with torch.no_grad(), autocast():
+        with torch.no_grad(), autocast(device_type=str(DEVICE)):
             for i, data in enumerate(val_dataloader, 0):
                 inputs, labels = data[0].to(DEVICE, non_blocking=True), data[1].to(DEVICE, non_blocking=True)
                 outputs = model(inputs)
@@ -542,35 +542,6 @@ def main():
     # Save the last model
     print(timestamp() + "Saving the last model...")
 
-    torch.cuda.empty_cache()
-
-    model.eval()
-    total_train = 0
-    correct_train = 0
-    with torch.no_grad():
-        for data in train_dataloader:
-            images, labels = data
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total_train += labels.size(0)
-            correct_train += (predicted == torch.argmax(labels, dim=1)).sum().item()
-    training_dataset_accuracy = str(round(100 * (correct_train / total_train), 2)) + "%"
-
-    torch.cuda.empty_cache()
-
-    total_val = 0
-    correct_val = 0
-    with torch.no_grad():
-        for data in val_dataloader:
-            images, labels = data
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total_val += labels.size(0)
-            correct_val += (predicted == torch.argmax(labels, dim=1)).sum().item()
-    validation_dataset_accuracy = str(round(100 * (correct_val / total_val), 2)) + "%"
-
     metadata_optimizer = str(optimizer).replace('\n', '')
     metadata_criterion = str(criterion).replace('\n', '')
     metadata_model = str(model).replace('\n', '')
@@ -603,9 +574,7 @@ def main():
                 f"training_size#{train_size}",
                 f"validation_size#{val_size}",
                 f"training_loss#{best_model_training_loss}",
-                f"validation_loss#{best_model_validation_loss}",
-                f"training_dataset_accuracy#{training_dataset_accuracy}",
-                f"validation_dataset_accuracy#{validation_dataset_accuracy}")
+                f"validation_loss#{best_model_validation_loss}")
     metadata = {"data": metadata}
     metadata = {data: str(value).encode("ascii") for data, value in metadata.items()}
 
@@ -622,35 +591,6 @@ def main():
 
     # Save the best model
     print(timestamp() + "Saving the best model...")
-
-    torch.cuda.empty_cache()
-
-    best_model.eval()
-    total_train = 0
-    correct_train = 0
-    with torch.no_grad():
-        for data in train_dataloader:
-            images, labels = data
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            outputs = best_model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total_train += labels.size(0)
-            correct_train += (predicted == torch.argmax(labels, dim=1)).sum().item()
-    training_dataset_accuracy = str(round(100 * (correct_train / total_train), 2)) + "%"
-
-    torch.cuda.empty_cache()
-
-    total_val = 0
-    correct_val = 0
-    with torch.no_grad():
-        for data in val_dataloader:
-            images, labels = data
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            outputs = best_model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total_val += labels.size(0)
-            correct_val += (predicted == torch.argmax(labels, dim=1)).sum().item()
-    validation_dataset_accuracy = str(round(100 * (correct_val / total_val), 2)) + "%"
 
     metadata_optimizer = str(optimizer).replace('\n', '')
     metadata_criterion = str(criterion).replace('\n', '')
@@ -684,9 +624,7 @@ def main():
                 f"training_size#{train_size}",
                 f"validation_size#{val_size}",
                 f"training_loss#{training_loss}",
-                f"validation_loss#{validation_loss}",
-                f"training_dataset_accuracy#{training_dataset_accuracy}",
-                f"validation_dataset_accuracy#{validation_dataset_accuracy}")
+                f"validation_loss#{validation_loss}")
     metadata = {"data": metadata}
     metadata = {data: str(value).encode("ascii") for data, value in metadata.items()}
 
