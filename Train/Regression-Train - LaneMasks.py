@@ -211,12 +211,12 @@ class NeuralNetwork(nn.Module):
         self.conv3 = nn.Conv2d(128, 256, 3, padding=1)
         self.pool1 = nn.MaxPool2d(2, 2)
 
-        self.conv5 = nn.Conv2d(256, 512, 3, padding=1)
-        self.conv7 = nn.Conv2d(512, 512, 3, padding=1)
+        self.conv5 = nn.Conv2d(256, 256, 3, padding=1)
+        self.conv7 = nn.Conv2d(256, 256, 3, padding=1)
         self.pool2 = nn.MaxPool2d(2, 2)
 
         # Decoder
-        self.conv9 = nn.Conv2d(512, 256, 3, padding=1)
+        self.conv9 = nn.Conv2d(256, 256, 3, padding=1)
         self.conv11 = nn.Conv2d(256, 128, 3, padding=1)
         self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
 
